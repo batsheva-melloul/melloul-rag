@@ -1,0 +1,13 @@
+pypdf
+google-genai
+python-dotenv
+numpy
+chromadb
+pysqlite3-binary; sys_platform == "linux"
+psycopg[binary]
+pgvector
+fastapi
+uvicorn
+gunicorn
+httpx
+PyJWT[crypto]

@@ -1,0 +1,15 @@
+{
+  "appService.zipIgnorePattern": [
+    "venv{,/**}",
+    "frontend/node_modules{,/**}",
+    ".git{,/**}",
+    "**/__pycache__{,/**}",
+    "**/*.pyc",
+    ".env",
+    ".vscode{,/**}",
+    "chroma_db{,/**}",
+    "chroma_backups{,/**}",
+    "sync.log",
+    "backup.log"
+  ]
+}

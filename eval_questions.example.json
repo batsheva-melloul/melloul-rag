@@ -1,0 +1,20 @@
+[
+  {
+    "question": "מהי חרדה אצל קירקגור?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "kierkegaard.pdf",
+    "expected_keywords": ["חרדה", "חופש"]
+  },
+  {
+    "question": "מי המחבר של 'המשתה'?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_keywords": ["אפלטון"]
+  },
+  {
+    "question": "כמה עובדים יש בחברת מלול?",
+    "corpus": "magar",
+    "expect": "no_info"
+  }
+]

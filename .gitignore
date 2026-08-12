@@ -1,0 +1,18 @@
+.env
+cache/
+chroma_db/
+chroma_backups/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# runtime logs
+*.log
+
+# node / frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+node_modules/
+# local machine-specific Claude settings
+.claude/settings.local.json
