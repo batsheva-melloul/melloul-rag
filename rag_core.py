@@ -42,8 +42,8 @@ from vectorstore import make_store
 # Configuration
 # ---------------------------------------------------------------------------
 
-RERANK_POOL = 20                            # candidate chunks pulled before reranking
-FINAL_K = 8                                 # chunks kept (sent to the model) after reranking
+RERANK_POOL = 30                            # candidate chunks pulled before reranking
+FINAL_K = 10                                # chunks kept (sent to the model) after reranking
 KEYWORD_EXTRA = 4                            # extra candidates added by keyword search (hybrid)
 MMR_LAMBDA = 0.7                            # rerank: relevance vs. diversity balance (0..1)
 MAX_HISTORY_MESSAGES = 10                    # how many recent turns to keep (cost control)
@@ -85,6 +85,20 @@ SYSTEM_PROMPT = (
 
 # A clear message returned when nothing relevant is found in the documents.
 NO_INFO_MESSAGE = "אין לי מידע על כך במסמכים."
+
+# Used to turn a short follow-up ("ומה עם הספר הזה?") into a standalone search
+# query, so retrieval doesn't rely on a context-less fragment. Only invoked when
+# there is prior conversation.
+REWRITE_SYSTEM_PROMPT = (
+    "You rewrite the user's LATEST message into a single standalone search query for "
+    "a document search engine, resolving pronouns and references (\"this book\", \"he\", "
+    "\"that idea\") using the conversation so far.\n"
+    "Rules:\n"
+    "- Output ONLY the rewritten query text — no quotes, no explanation, no prefix.\n"
+    "- Keep it in the SAME language as the user (usually Hebrew).\n"
+    "- If the latest message is already self-contained, return it unchanged.\n"
+    "- Keep it concise: a search query, not a sentence of prose."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +475,36 @@ def build_messages(question: str, context_block: str, history: list[dict]) -> li
     return messages
 
 
+def rewrite_query(question: str, history: list[dict], llm) -> str:
+    """
+    Rewrite a follow-up question into a standalone search query using the recent
+    conversation. Returns the original question unchanged when there's no history
+    or if the rewrite fails (so retrieval never breaks over this).
+    """
+    if not history:
+        return question
+
+    recent = history[-6:]  # last few turns are enough to resolve references
+    convo = "\n".join(
+        f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['text']}"
+        for m in recent
+    )
+    prompt = (
+        f"Conversation so far:\n{convo}\n\n"
+        f"Latest user message: {question}\n\n"
+        f"Standalone search query:"
+    )
+    try:
+        rewritten = llm.generate(REWRITE_SYSTEM_PROMPT, [{"role": "user", "text": prompt}])
+        rewritten = (rewritten or "").strip()
+        if rewritten and rewritten != question:
+            logger.info("Rewrote query: %r -> %r", question[:60], rewritten[:60])
+        return rewritten or question
+    except Exception:
+        logger.exception("Query rewrite failed — using the original question")
+        return question
+
+
 # ---------------------------------------------------------------------------
 # RagEngine — ties everything together for reuse by the CLI and the API
 # ---------------------------------------------------------------------------
@@ -517,7 +561,13 @@ class RagEngine:
         history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
         Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
         """
-        top_chunks = retrieve_top_chunks(question, self.store, self.llm)
+        history = history or []
+
+        # Resolve a follow-up ("that book", "he") into a standalone query BEFORE
+        # retrieval, so search isn't driven by a context-less fragment. Retrieval
+        # runs on the rewritten query; the answer still uses the user's own wording.
+        search_query = rewrite_query(question, history, self.llm)
+        top_chunks = retrieve_top_chunks(search_query, self.store, self.llm)
         context_block = build_context_block(top_chunks)
 
         # Safety guard: if there is no context, never call the model —
@@ -525,7 +575,7 @@ class RagEngine:
         if not context_block.strip():
             return {"answer": NO_INFO_MESSAGE, "sources": []}
 
-        messages = build_messages(question, context_block, history or [])
+        messages = build_messages(question, context_block, history)
         answer_text = self.llm.generate(SYSTEM_PROMPT, messages)
         return {"answer": answer_text, "sources": top_chunks}
 
