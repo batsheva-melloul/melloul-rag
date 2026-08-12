@@ -1,0 +1,143 @@
+[
+  {
+    "question": "מי כתב את הספר 'איש האמונה הבודד'?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["סולוב"]
+  },
+  {
+    "question": "על אילו שני תיאורים מקראיים של בריאת האדם מבוסס הספר 'איש האמונה הבודד'?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["בראשית"]
+  },
+  {
+    "question": "מהו רגש הבדידות שהרב מתאר בפתיחת הספר?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["בודד"]
+  },
+  {
+    "question": "באיזה 'צלם' נברא אדם-א לפי הספר?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["צלם"]
+  },
+  {
+    "question": "מהי 'קהילה טבעית' לפי הרב סולובייצ'יק, וממה היא ניזונה?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["טבעית", "ביולוג"]
+  },
+  {
+    "question": "מהו ההבדל המרכזי בין אדם-א (איש ההוד) לבין אדם-ב?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["אדם"]
+  },
+  {
+    "question": "מדוע, לפי הספר, איש האמונה בן זמננו חווה בדידות חריפה במיוחד דווקא בחברה המודרנית?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["בדידות"]
+  },
+  {
+    "question": "אם הקהילה של אדם-א נובעת מדחפים ביולוגיים והישרדות, מה ניתן להסיק על אופי הקשרים בין בני האדם בקהילה כזו?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["קהילה"]
+  },
+  {
+    "question": "מדוע המתרגם בחר במונחים 'אדם-א' ו'אדם-ב' במקום 'אדם הראשון' ו'אדם השני'?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["בלבול"]
+  },
+  {
+    "question": "לפי הספר, האם בדידותו של איש האמונה היא בעיה שיש לפתור, או חלק מהותי מקיומו? נמקי על סמך הטקסט.",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["בדידות", "אמונה"]
+  },
+  {
+    "question": "מה משמעות היותו של אדם-א נברא 'בצלם אלוקים' לגבי תפקידו ויחסו אל העולם?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "איש האמונה",
+    "expected_keywords": ["צלם"]
+  },
+  {
+    "question": "היכן ממוקם ים המלח ומה מיוחד בגובהו?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "dead_sea.pdf",
+    "expected_keywords": ["הנמוכה"]
+  },
+  {
+    "question": "מדוע פוחת מפלס ים המלח בעשורים האחרונים?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "dead_sea.pdf",
+    "expected_keywords": ["הירדן"]
+  },
+  {
+    "question": "מהי תופעת הבולענים סביב ים המלח?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "dead_sea.pdf",
+    "expected_keywords": ["בולענים"]
+  },
+  {
+    "question": "מהם שלושת הנחלים שמהם נובע נהר הירדן?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "jordan_river.pdf",
+    "expected_keywords": ["דן", "בניאס", "חצבני"]
+  },
+  {
+    "question": "מהיכן נובע נהר הירדן ולאן הוא נשפך?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "jordan_river.pdf",
+    "expected_keywords": ["חרמון", "המלח"]
+  },
+  {
+    "question": "מהי הכנרת ומה ייחודה בין מקורות המים בישראל?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "kineret.pdf",
+    "expected_keywords": ["מתוקים"]
+  },
+  {
+    "question": "באיזה טווח גבהים נמצא בדרך כלל מפלס הכנרת?",
+    "corpus": "magar",
+    "expect": "answer",
+    "expected_source": "kineret.pdf",
+    "expected_keywords": ["209", "212"]
+  },
+  {
+    "question": "כמה עובדים מועסקים בחברת מלול?",
+    "corpus": "magar",
+    "expect": "no_info"
+  },
+  {
+    "question": "מהי מדיניות ימי החופשה השנתיים של החברה?",
+    "corpus": "magar",
+    "expect": "no_info"
+  },
+  {
+    "question": "מה שער הדולר מול השקל היום?",
+    "corpus": "magar",
+    "expect": "no_info"
+  }
+]
