@@ -177,8 +177,10 @@ class AzureOpenAIProvider(LLMProvider):
     """
 
     # How many completion tokens the chat model may produce. gpt-5 is a reasoning
-    # model — reasoning tokens count here too, so keep this generous.
-    MAX_COMPLETION_TOKENS = 2000
+    # model — the hidden reasoning tokens are counted here TOO, so a low cap can be
+    # fully consumed by reasoning on a complex question, leaving an EMPTY answer.
+    # Keep this generous (billing is per token actually generated, not per the cap).
+    MAX_COMPLETION_TOKENS = 8000
 
     def __init__(self):
         self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
@@ -259,7 +261,16 @@ class AzureOpenAIProvider(LLMProvider):
             # NOTE: gpt-5 accepts only the default temperature — do NOT send one.
         }
         data = self._post(self.chat_deployment, "chat/completions", body)
-        return data["choices"][0]["message"]["content"] or ""
+        choice = data["choices"][0]
+        content = choice["message"].get("content")
+        if not content:
+            # gpt-5 can spend the whole token budget on hidden reasoning and return
+            # no visible text (finish_reason "length"). Log it so it's diagnosable.
+            logger.warning(
+                "Empty completion (finish_reason=%s) — reasoning may have used the "
+                "entire max_completion_tokens budget", choice.get("finish_reason"),
+            )
+        return content or ""
 
 
 # ---------------------------------------------------------------------------

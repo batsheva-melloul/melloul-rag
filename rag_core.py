@@ -582,6 +582,10 @@ class RagEngine:
 
         messages = build_messages(question, context_block, history)
         answer_text = self.llm.generate(SYSTEM_PROMPT, messages)
+        if not answer_text.strip():
+            # Model returned nothing usable (e.g. reasoning consumed the whole token
+            # budget) — show a friendly message instead of an empty bubble.
+            answer_text = "מצטער, לא הצלחתי לנסח תשובה לשאלה הזו. נסו לנסח אותה מעט אחרת."
         return {"answer": answer_text, "sources": top_chunks}
 
 
