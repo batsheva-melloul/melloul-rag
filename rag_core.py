@@ -81,6 +81,11 @@ SYSTEM_PROMPT = (
     "that document are present below, base your answer PRIMARILY on those excerpts (the "
     "ones whose source label matches the named document) — not on other documents that "
     "merely discuss or mention it.\n"
+    "8. FORMATTING: your answer is rendered as Markdown. When the user asks for a table "
+    "— or the answer is naturally a comparison of several items across attributes — "
+    "format it as a proper Markdown table (| header | ... | with a |---| separator row). "
+    "Otherwise use short paragraphs and bullet lists. Never wrap the answer in a code "
+    "block.\n"
 )
 
 # A clear message returned when nothing relevant is found in the documents.

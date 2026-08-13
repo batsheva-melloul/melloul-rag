@@ -1,8 +1,10 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import SourceTags from "./SourceTags";
 
 // A single chat message: an avatar plus the bubble with text and (for bot) sources.
-// Bot answers are rendered as Markdown (bold, lists, etc.); user text stays plain.
+// Bot answers are rendered as Markdown (bold, lists, TABLES via remark-gfm);
+// user text stays plain.
 
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
@@ -15,7 +17,7 @@ function MessageBubble({ message }) {
           <div className="bubble-text">{message.text}</div>
         ) : (
           <div className="bubble-text markdown">
-            <ReactMarkdown>{message.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>
           </div>
         )}
         {!isUser && <SourceTags sources={message.sources} answer={message.text} />}
