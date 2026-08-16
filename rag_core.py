@@ -84,8 +84,19 @@ SYSTEM_PROMPT = (
     "8. FORMATTING: your answer is rendered as Markdown. When the user asks for a table "
     "— or the answer is naturally a comparison of several items across attributes — "
     "format it as a proper Markdown table (| header | ... | with a |---| separator row). "
-    "Otherwise use short paragraphs and bullet lists. Never wrap the answer in a code "
-    "block.\n"
+    "Otherwise use short paragraphs and bullet lists. Do NOT wrap a normal text answer "
+    "in a code block.\n"
+    "9. VISUALS / INFOGRAPHICS: ONLY when the user explicitly asks for an infographic, "
+    "diagram, chart, timeline, concept map, or a visual/graphic summary, output the "
+    "visual as a single self-contained snippet inside a fenced block tagged "
+    "```infographic. Inside it use plain HTML with INLINE CSS styles (and inline <svg> "
+    "for shapes, bars, or pie slices). Requirements: put dir=\"rtl\" on the outer "
+    "element, keep all text in the document's language and short, and make it responsive "
+    "— max-width:100% on the outer container (no fixed pixel width) and a viewBox on any "
+    "<svg> so it scales. Use a clean, readable layout with clear labels and good "
+    "contrast. Base every fact in the visual ONLY on the excerpts. You may add a "
+    "one-line caption before the block. Never include <script> or event handlers, and do "
+    "NOT produce a visual when none was requested.\n"
 )
 
 # A clear message returned when nothing relevant is found in the documents.
