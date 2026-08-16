@@ -906,3 +906,26 @@ body {
 .markdown tbody tr:nth-child(even) {
   background: var(--excerpt-bg);
 }
+
+/* ---------------------------------------------------------------------------
+   Infographics: sanitized model-generated HTML/SVG (```infographic blocks)
+   --------------------------------------------------------------------------- */
+.infographic {
+  margin: 0.85rem 0;
+  max-width: 100%;
+  overflow-x: auto;            /* wide graphics scroll instead of breaking layout */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: var(--bot-bubble);
+}
+.infographic svg,
+.infographic img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.infographic * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
