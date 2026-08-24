@@ -99,6 +99,9 @@ class AskRequest(BaseModel):
     # Which chatbot/corpus to answer from. Defaults to the first corpus
     # so an older frontend (not yet sending it) keeps working.
     corpus_id: str = DEFAULT_CORPUS_ID
+    # Optional formatting instruction from a template button (e.g. make flashcards).
+    # It shapes the answer but is kept out of retrieval (search uses the question).
+    directive: str = ""
 
 
 class Corpus(BaseModel):
@@ -150,7 +153,7 @@ def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
     engine = engines[request.corpus_id]
     history = [{"role": m.role, "text": m.text} for m in request.history]
     try:
-        result = engine.answer(request.question, history)
+        result = engine.answer(request.question, history, directive=request.directive)
     except Exception:
         # Don't leak internal errors to the client; log them and return a
         # friendly message the chat UI can display.

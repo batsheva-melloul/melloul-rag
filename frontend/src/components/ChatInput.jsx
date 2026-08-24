@@ -37,9 +37,10 @@ function ChatInput({ onSend, disabled }) {
     if (!topic || disabled) return;
 
     if (template) {
-      // Shown in the chat: a short label. Sent to the backend: the full instruction.
+      // Chat shows a short label; the TOPIC is the search question and the
+      // template's directive (format instruction) is sent separately.
       const display = `${template.icon} ${template.label}: ${topic}`;
-      onSend(display, template.prompt + topic);
+      onSend(display, topic, template.directive);
     } else {
       onSend(topic);
     }

@@ -72,12 +72,14 @@ export function useConversations(corpusId) {
     );
   }
 
-  // `displayText` is what the user sees in the chat; `promptText` (optional) is what
-  // is actually sent to the backend. They differ for template buttons: the bubble
-  // shows "🗂️ כרטיסיות: <נושא>" while the full instruction is sent behind the scenes.
-  async function sendQuestion(displayText, promptText) {
+  // `displayText` is what the user sees in the chat; `questionText` (optional) is
+  // the actual search/answer question; `directive` (optional) is a template's
+  // formatting instruction. For template buttons the bubble shows a short label
+  // ("🗂️ כרטיסיות: <נושא>") while the topic is searched and the directive shapes
+  // the format — kept apart so search matches the topic, not the boilerplate.
+  async function sendQuestion(displayText, questionText, directive = "") {
     const shown = (displayText || "").trim();
-    const toSend = (promptText ?? displayText ?? "").trim();
+    const question = (questionText ?? displayText ?? "").trim();
     if (!shown || loading || !active) return;
 
     const history = active.messages;
@@ -92,7 +94,7 @@ export function useConversations(corpusId) {
 
     try {
       const token = await getAccessToken(instance, accounts);
-      const data = await askQuestion(toSend, history, token, corpusId);
+      const data = await askQuestion(question, history, token, corpusId, directive);
       updateActive((c) => ({
         ...c,
         messages: [
