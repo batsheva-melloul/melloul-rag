@@ -673,6 +673,12 @@ body {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+.template-chip.active {
+  background: var(--brand-gradient);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
 .template-chip:disabled {
   opacity: 0.5;
   cursor: default;
