@@ -466,11 +466,16 @@ def build_context_block(top_chunks: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def build_messages(question: str, context_block: str, history: list[dict]) -> list[dict]:
+def build_messages(question: str, context_block: str, history: list[dict],
+                   directive: str = "") -> list[dict]:
     """
     Build the vendor-neutral message list for the provider.
     Prior turns give the model conversation memory; the final user turn carries
     the current question plus its retrieved excerpts.
+
+    `directive` (optional) is a formatting instruction from a template button
+    (e.g. "make flashcards"). It shapes the ANSWER but is deliberately kept out of
+    the retrieval query, so search matches the topic — not the boilerplate.
 
     history is a list of {"role": "user" | "bot", "text": str}.
     Returned messages use roles "user" / "assistant" (the provider maps these).
@@ -488,6 +493,8 @@ def build_messages(question: str, context_block: str, history: list[dict]) -> li
         f"Document excerpts:\n\n{context_block}\n\n"
         f"Question: {question}"
     )
+    if directive:
+        current_turn += f"\n\nInstruction for how to answer: {directive}"
     messages.append({"role": "user", "text": current_turn})
     return messages
 
@@ -572,10 +579,14 @@ class RagEngine:
         """Index a PDF from in-memory bytes (no file saved to disk)."""
         return index_pdf_bytes(self.store, self.llm, source, version, data)
 
-    def answer(self, question: str, history: list[dict] | None = None) -> dict:
+    def answer(self, question: str, history: list[dict] | None = None,
+               directive: str = "") -> dict:
         """
         Answer a question grounded in the documents, with conversation memory.
         history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
+        `directive` (optional) is a template's formatting instruction — it shapes the
+        answer but is kept OUT of retrieval, so search matches the topic, not the
+        boilerplate.
         Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
         """
         history = history or []
@@ -592,7 +603,7 @@ class RagEngine:
         if not context_block.strip():
             return {"answer": NO_INFO_MESSAGE, "sources": []}
 
-        messages = build_messages(question, context_block, history)
+        messages = build_messages(question, context_block, history, directive)
         answer_text = self.llm.generate(SYSTEM_PROMPT, messages)
         if not answer_text.strip():
             # Model returned nothing usable (e.g. reasoning consumed the whole token
