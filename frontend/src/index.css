@@ -644,6 +644,7 @@ body {
 
 .input-row {
   display: flex;
+  align-items: flex-end;   /* keep the send button at the bottom as the textarea grows */
   gap: 10px;
   padding: 16px 20px;
   background: var(--surface);
@@ -659,9 +660,12 @@ body {
   border-radius: 16px;
   font-family: inherit;
   font-size: 0.95rem;
+  line-height: 1.45;
   background: var(--surface-2);
   color: var(--text);
-  max-height: 120px;
+  min-height: 24px;        /* one comfortable line */
+  max-height: 200px;       /* grows up to here, then scrolls */
+  overflow-y: auto;
 }
 
 .input:focus {
