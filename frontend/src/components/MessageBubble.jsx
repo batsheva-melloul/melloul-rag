@@ -1,9 +1,11 @@
+import { useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import DOMPurify from "dompurify";
 import SourceTags from "./SourceTags";
 import FlashCards from "./FlashCards";
 import Quiz from "./Quiz";
+import { downloadAnswer } from "../utils/download";
 
 // A single chat message: an avatar plus the bubble with text and (for bot) sources.
 // Bot answers are rendered as Markdown (bold, lists, TABLES via remark-gfm);
@@ -40,6 +42,8 @@ const MARKDOWN_COMPONENTS = { pre: Pre };
 
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
+  const contentRef = useRef(null);
+  const hasSources = !isUser && message.sources && message.sources.length > 0;
 
   return (
     <div className={`message-row ${isUser ? "user" : "bot"}`}>
@@ -48,13 +52,23 @@ function MessageBubble({ message }) {
         {isUser ? (
           <div className="bubble-text">{message.text}</div>
         ) : (
-          <div className="bubble-text markdown">
+          <div className="bubble-text markdown" ref={contentRef}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
               {message.text}
             </ReactMarkdown>
           </div>
         )}
         {!isUser && <SourceTags sources={message.sources} answer={message.text} />}
+        {hasSources && (
+          <button
+            type="button"
+            className="save-button"
+            onClick={() => downloadAnswer(contentRef.current?.innerHTML, "עוזר-החברה")}
+            title="שמור את התשובה כקובץ"
+          >
+            ⬇ שמור כקובץ
+          </button>
+        )}
       </div>
     </div>
   );
