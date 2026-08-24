@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import DOMPurify from "dompurify";
 import SourceTags from "./SourceTags";
+import FlashCards from "./FlashCards";
 
 // A single chat message: an avatar plus the bubble with text and (for bot) sources.
 // Bot answers are rendered as Markdown (bold, lists, TABLES via remark-gfm);
@@ -13,12 +14,17 @@ import SourceTags from "./SourceTags";
 function Pre({ children }) {
   const codeEl = Array.isArray(children) ? children[0] : children;
   const className = codeEl?.props?.className || "";
-  const isVisual = /language-(infographic|svg)/.test(className);
+  const lang = /language-(\w+)/.exec(className)?.[1];
+  const raw = String(codeEl?.props?.children ?? "").replace(/\n$/, "");
 
-  if (isVisual) {
-    const raw = String(codeEl?.props?.children ?? "").replace(/\n$/, "");
-    // Default DOMPurify keeps styled HTML + SVG and strips only the dangerous parts
-    // (scripts, on* handlers, javascript: URLs) — so inline styling is preserved.
+  // ```flashcards -> interactive flip cards.
+  if (lang === "flashcards") {
+    return <FlashCards text={raw} />;
+  }
+  // ```infographic / ```svg -> sanitized HTML/SVG visual. Default DOMPurify keeps
+  // styled HTML + SVG and strips only the dangerous parts (scripts, on* handlers,
+  // javascript: URLs), so inline styling is preserved.
+  if (lang === "infographic" || lang === "svg") {
     const clean = DOMPurify.sanitize(raw);
     return <div className="infographic" dangerouslySetInnerHTML={{ __html: clean }} />;
   }

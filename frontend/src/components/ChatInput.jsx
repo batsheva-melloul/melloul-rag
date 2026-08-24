@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
+import { TEMPLATES } from "../data/templates";
 
-// The bottom input row: an AUTO-GROWING textarea plus a send button.
-// The textarea gets taller as you type (up to a max), then scrolls — so a long
-// question is visible without scrolling inside a one-line box.
-// Enter sends; Shift+Enter adds a new line.
+// The bottom input area: a row of preset TEMPLATE chips (study guide / quiz /
+// flashcards / summary) above an AUTO-GROWING textarea and the send button.
+// Picking a template fills the input with a ready-made instruction; the user adds
+// the topic and sends. Enter sends; Shift+Enter adds a new line.
 
 const MAX_HEIGHT = 200; // px — matches .input max-height; beyond this it scrolls
 
@@ -15,13 +16,25 @@ function ChatInput({ onSend, disabled }) {
   function autoGrow() {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "auto";                                  // shrink first, so it can also get smaller
+    el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }
 
   function handleChange(event) {
     setText(event.target.value);
     autoGrow();
+  }
+
+  // Fill the input with a template's preset prompt and focus it, cursor at the end.
+  function pickTemplate(template) {
+    setText(template.prompt);
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    requestAnimationFrame(() => {
+      autoGrow();
+      el.selectionStart = el.selectionEnd = el.value.length;
+    });
   }
 
   function handleSend() {
@@ -39,24 +52,42 @@ function ChatInput({ onSend, disabled }) {
   }
 
   return (
-    <div className="input-row">
-      <textarea
-        ref={textareaRef}
-        className="input"
-        value={text}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder="כתבו שאלה..."
-        rows={1}
-      />
-      <button
-        className="send-button"
-        onClick={handleSend}
-        disabled={disabled || !text.trim()}
-        aria-label="שלח"
-      >
-        ➤
-      </button>
+    <div className="input-area">
+      <div className="template-bar">
+        {TEMPLATES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className="template-chip"
+            onClick={() => pickTemplate(t)}
+            disabled={disabled}
+            title={t.label}
+          >
+            <span className="template-chip-icon">{t.icon}</span>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="input-row">
+        <textarea
+          ref={textareaRef}
+          className="input"
+          value={text}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="כתבו שאלה..."
+          rows={1}
+        />
+        <button
+          className="send-button"
+          onClick={handleSend}
+          disabled={disabled || !text.trim()}
+          aria-label="שלח"
+        >
+          ➤
+        </button>
+      </div>
     </div>
   );
 }
