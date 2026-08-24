@@ -1,18 +1,19 @@
 import { useRef, useState } from "react";
 import { TEMPLATES } from "../data/templates";
 
-// The bottom input area: a row of preset TEMPLATE chips (study guide / quiz /
-// flashcards / summary) above an AUTO-GROWING textarea and the send button.
-// Picking a template fills the input with a ready-made instruction; the user adds
-// the topic and sends. Enter sends; Shift+Enter adds a new line.
+// The bottom input area: a row of TEMPLATE chips (study guide / quiz / flashcards /
+// summary) above an AUTO-GROWING textarea and the send button.
+// Picking a template turns on a "mode": you then type ONLY the topic, and the full
+// (hidden) instruction is sent behind the scenes — the chat shows just
+// "🗂️ כרטיסיות: <topic>". Enter sends; Shift+Enter adds a new line.
 
 const MAX_HEIGHT = 200; // px — matches .input max-height; beyond this it scrolls
 
 function ChatInput({ onSend, disabled }) {
   const [text, setText] = useState("");
+  const [template, setTemplate] = useState(null); // active template, or null
   const textareaRef = useRef(null);
 
-  // Resize the textarea to fit its content (capped at MAX_HEIGHT).
   function autoGrow() {
     const el = textareaRef.current;
     if (!el) return;
@@ -25,23 +26,27 @@ function ChatInput({ onSend, disabled }) {
     autoGrow();
   }
 
-  // Fill the input with a template's preset prompt and focus it, cursor at the end.
-  function pickTemplate(template) {
-    setText(template.prompt);
-    const el = textareaRef.current;
-    if (!el) return;
-    el.focus();
-    requestAnimationFrame(() => {
-      autoGrow();
-      el.selectionStart = el.selectionEnd = el.value.length;
-    });
+  // Toggle a template on/off; clicking the active one again turns the mode off.
+  function toggleTemplate(picked) {
+    setTemplate((current) => (current?.id === picked.id ? null : picked));
+    textareaRef.current?.focus();
   }
 
   function handleSend() {
-    if (!text.trim() || disabled) return;
-    onSend(text);
+    const topic = text.trim();
+    if (!topic || disabled) return;
+
+    if (template) {
+      // Shown in the chat: a short label. Sent to the backend: the full instruction.
+      const display = `${template.icon} ${template.label}: ${topic}`;
+      onSend(display, template.prompt + topic);
+    } else {
+      onSend(topic);
+    }
+
     setText("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto"; // back to one line
+    setTemplate(null);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
   function handleKeyDown(event) {
@@ -51,6 +56,10 @@ function ChatInput({ onSend, disabled }) {
     }
   }
 
+  const placeholder = template
+    ? `הקלידו נושא ל"${template.label}"...`
+    : "כתבו שאלה...";
+
   return (
     <div className="input-area">
       <div className="template-bar">
@@ -58,8 +67,8 @@ function ChatInput({ onSend, disabled }) {
           <button
             key={t.id}
             type="button"
-            className="template-chip"
-            onClick={() => pickTemplate(t)}
+            className={`template-chip${template?.id === t.id ? " active" : ""}`}
+            onClick={() => toggleTemplate(t)}
             disabled={disabled}
             title={t.label}
           >
@@ -76,7 +85,7 @@ function ChatInput({ onSend, disabled }) {
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="כתבו שאלה..."
+          placeholder={placeholder}
           rows={1}
         />
         <button

@@ -72,23 +72,27 @@ export function useConversations(corpusId) {
     );
   }
 
-  async function sendQuestion(text) {
-    const trimmed = text.trim();
-    if (!trimmed || loading || !active) return;
+  // `displayText` is what the user sees in the chat; `promptText` (optional) is what
+  // is actually sent to the backend. They differ for template buttons: the bubble
+  // shows "🗂️ כרטיסיות: <נושא>" while the full instruction is sent behind the scenes.
+  async function sendQuestion(displayText, promptText) {
+    const shown = (displayText || "").trim();
+    const toSend = (promptText ?? displayText ?? "").trim();
+    if (!shown || loading || !active) return;
 
     const history = active.messages;
 
     updateActive((c) => ({
       ...c,
-      title: c.messages.length === 0 ? trimmed.slice(0, 30) : c.title,
-      messages: [...c.messages, { role: "user", text: trimmed }],
+      title: c.messages.length === 0 ? shown.slice(0, 30) : c.title,
+      messages: [...c.messages, { role: "user", text: shown }],
       updatedAt: Date.now(),
     }));
     setLoading(true);
 
     try {
       const token = await getAccessToken(instance, accounts);
-      const data = await askQuestion(trimmed, history, token, corpusId);
+      const data = await askQuestion(toSend, history, token, corpusId);
       updateActive((c) => ({
         ...c,
         messages: [
