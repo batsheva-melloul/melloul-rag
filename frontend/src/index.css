@@ -1105,3 +1105,22 @@ body {
 .quiz-reset:hover {
   border-color: var(--accent);
 }
+
+/* "Save answer as a file" button under a bot answer */
+.save-button {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.save-button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
