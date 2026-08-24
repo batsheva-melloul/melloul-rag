@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import DOMPurify from "dompurify";
 import SourceTags from "./SourceTags";
 import FlashCards from "./FlashCards";
+import Quiz from "./Quiz";
 
 // A single chat message: an avatar plus the bubble with text and (for bot) sources.
 // Bot answers are rendered as Markdown (bold, lists, TABLES via remark-gfm);
@@ -20,6 +21,10 @@ function Pre({ children }) {
   // ```flashcards -> interactive flip cards.
   if (lang === "flashcards") {
     return <FlashCards text={raw} />;
+  }
+  // ```quiz -> interactive multiple-choice quiz with a score.
+  if (lang === "quiz") {
+    return <Quiz text={raw} />;
   }
   // ```infographic / ```svg -> sanitized HTML/SVG visual. Default DOMPurify keeps
   // styled HTML + SVG and strips only the dangerous parts (scripts, on* handlers,
