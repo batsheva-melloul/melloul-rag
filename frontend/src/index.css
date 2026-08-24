@@ -642,14 +642,47 @@ body {
 
 /* --- Input row --- */
 
+.input-area {
+  background: var(--surface);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+}
+
+.template-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 20px 0;
+}
+
+.template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bot-bubble);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.template-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.template-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .input-row {
   display: flex;
   align-items: flex-end;   /* keep the send button at the bottom as the textarea grows */
   gap: 10px;
-  padding: 16px 20px;
-  background: var(--surface);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border);
+  padding: 12px 20px 16px;
 }
 
 .input {
@@ -932,4 +965,50 @@ body {
 .infographic * {
   max-width: 100%;
   box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------------------
+   Flashcards: interactive ```flashcards blocks (click a card to flip)
+   --------------------------------------------------------------------------- */
+.flashcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0.85rem 0;
+}
+.flashcard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 120px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bot-bubble);
+  color: var(--text);
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.flashcard:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px var(--card-shadow);
+}
+.flashcard.flipped {
+  background: var(--accent-soft);
+}
+.flashcard-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.flashcard-text {
+  flex: 1;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+.flashcard-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
 }
