@@ -102,6 +102,9 @@ class AskRequest(BaseModel):
     # Optional formatting instruction from a template button (e.g. make flashcards).
     # It shapes the answer but is kept out of retrieval (search uses the question).
     directive: str = ""
+    # Template requests set this: if the question names a book, read the whole book
+    # (a wide sample) instead of only the top matches.
+    comprehensive: bool = False
 
 
 class Corpus(BaseModel):
@@ -153,7 +156,8 @@ def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
     engine = engines[request.corpus_id]
     history = [{"role": m.role, "text": m.text} for m in request.history]
     try:
-        result = engine.answer(request.question, history, directive=request.directive)
+        result = engine.answer(request.question, history, directive=request.directive,
+                               comprehensive=request.comprehensive)
     except Exception:
         # Don't leak internal errors to the client; log them and return a
         # friendly message the chat UI can display.

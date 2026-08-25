@@ -20,7 +20,9 @@ export async function fetchCorpora(accessToken = "") {
  *
  * history: [{ role: "user" | "bot", text: string }, ...]
  */
-export async function askQuestion(question, history = [], accessToken = "", corpusId, directive = "") {
+export async function askQuestion(
+  question, history = [], accessToken = "", corpusId, directive = "", comprehensive = false
+) {
   const trimmedHistory = history.map((m) => ({ role: m.role, text: m.text }));
 
   const response = await fetch(`${API_BASE}/ask`, {
@@ -34,6 +36,7 @@ export async function askQuestion(question, history = [], accessToken = "", corp
       history: trimmedHistory,
       corpus_id: corpusId,
       directive,
+      comprehensive,
     }),
   });
 
