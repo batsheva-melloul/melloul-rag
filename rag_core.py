@@ -44,6 +44,7 @@ from vectorstore import make_store
 
 RERANK_POOL = 30                            # candidate chunks pulled before reranking
 FINAL_K = 10                                # chunks kept (sent to the model) after reranking
+WHOLE_BOOK_CHUNKS = 120                     # chunks sampled across a whole book (comprehensive mode)
 KEYWORD_EXTRA = 4                            # extra candidates added by keyword search (hybrid)
 MMR_LAMBDA = 0.7                            # rerank: relevance vs. diversity balance (0..1)
 MAX_HISTORY_MESSAGES = 10                    # how many recent turns to keep (cost control)
@@ -453,6 +454,27 @@ def retrieve_top_chunks(question: str, store, llm) -> list[dict]:
     ]
 
 
+def _sample_evenly(items: list, k: int) -> list:
+    """Pick k items spread evenly across the list (keeps order, no duplicates)."""
+    if len(items) <= k:
+        return items
+    step = len(items) / k
+    return [items[int(i * step)] for i in range(k)]
+
+
+def retrieve_whole_book(store, source: str) -> list[dict]:
+    """
+    WHOLE-BOOK mode: instead of the top-K most similar chunks, take a sample spread
+    evenly across the ENTIRE named book — so a study guide / quiz / summary covers
+    the whole book, not just the passages most similar to the query.
+    """
+    chunks = _sample_evenly(store.source_chunks(source), WHOLE_BOOK_CHUNKS)
+    return [
+        {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
+        for c in chunks
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Step 5 — Build the prompt and call the model
 # ---------------------------------------------------------------------------
@@ -580,13 +602,14 @@ class RagEngine:
         return index_pdf_bytes(self.store, self.llm, source, version, data)
 
     def answer(self, question: str, history: list[dict] | None = None,
-               directive: str = "") -> dict:
+               directive: str = "", comprehensive: bool = False) -> dict:
         """
         Answer a question grounded in the documents, with conversation memory.
         history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
-        `directive` (optional) is a template's formatting instruction — it shapes the
-        answer but is kept OUT of retrieval, so search matches the topic, not the
-        boilerplate.
+        `directive` (optional) is a template's formatting instruction — kept OUT of
+        retrieval so search matches the topic, not the boilerplate.
+        `comprehensive` (template requests): if the query names a specific book, read a
+        wide sample across the WHOLE book so the output covers all of it.
         Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
         """
         history = history or []
@@ -595,7 +618,17 @@ class RagEngine:
         # retrieval, so search isn't driven by a context-less fragment. Retrieval
         # runs on the rewritten query; the answer still uses the user's own wording.
         search_query = rewrite_query(question, history, self.llm)
-        top_chunks = retrieve_top_chunks(search_query, self.store, self.llm)
+
+        # WHOLE-BOOK mode: for a comprehensive request (a template) that clearly names
+        # a book, sample across the whole book instead of just the top-K matches.
+        named = (_match_named_source(search_query, self.store.sources())
+                 if comprehensive else None)
+        if named:
+            logger.info("Whole-book mode for: %s", named)
+            top_chunks = retrieve_whole_book(self.store, named)
+        else:
+            top_chunks = retrieve_top_chunks(search_query, self.store, self.llm)
+
         context_block = build_context_block(top_chunks)
 
         # Safety guard: if there is no context, never call the model —
@@ -609,7 +642,8 @@ class RagEngine:
             # Model returned nothing usable (e.g. reasoning consumed the whole token
             # budget) — show a friendly message instead of an empty bubble.
             answer_text = "מצטער, לא הצלחתי לנסח תשובה לשאלה הזו. נסו לנסח אותה מעט אחרת."
-        return {"answer": answer_text, "sources": top_chunks}
+        # Whole-book mode gathers many chunks from one book — show at most ~10 sources.
+        return {"answer": answer_text, "sources": _sample_evenly(top_chunks, 10)}
 
 
 # ---------------------------------------------------------------------------

@@ -37,10 +37,10 @@ function ChatInput({ onSend, disabled }) {
     if (!topic || disabled) return;
 
     if (template) {
-      // Chat shows a short label; the TOPIC is the search question and the
-      // template's directive (format instruction) is sent separately.
+      // Chat shows a short label; the TOPIC is the search question, the template's
+      // directive shapes the format, and comprehensive=true enables whole-book mode.
       const display = `${template.icon} ${template.label}: ${topic}`;
-      onSend(display, topic, template.directive);
+      onSend(display, topic, template.directive, true);
     } else {
       onSend(topic);
     }

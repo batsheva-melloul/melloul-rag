@@ -136,6 +136,20 @@ class ChromaStore:
             )
         ]
 
+    def source_chunks(self, source: str, cap: int = 4000) -> list[dict]:
+        """All chunks of one source document, ordered by page (for whole-book mode)."""
+        got = self._col.get(
+            where={"source": source}, limit=cap,
+            include=["documents", "metadatas"],
+        )
+        items = [
+            {"id": cid, "text": doc, "source": meta["source"],
+             "page_number": meta["page_number"]}
+            for cid, doc, meta in zip(got["ids"], got["documents"], got["metadatas"])
+        ]
+        items.sort(key=lambda x: x["page_number"])
+        return items
+
     def iter_all(self, page: int = 5000):
         """
         Yield every stored chunk (with its embedding) — used by the migration.
@@ -309,6 +323,18 @@ class PgVectorStore:
                              (self.corpus_id,), fetch="all")
             self._sources_cache = sorted(r[0] for r in rows)
         return self._sources_cache
+
+    def source_chunks(self, source: str, cap: int = 4000) -> list[dict]:
+        """All chunks of one source document, ordered by page (for whole-book mode)."""
+        rows = self._run(
+            "SELECT chunk_id, text, source, page_number FROM chunks "
+            "WHERE corpus_id=%s AND source=%s ORDER BY page_number, chunk_id LIMIT %s",
+            (self.corpus_id, source, cap), fetch="all",
+        )
+        return [
+            {"id": r[0], "text": r[1], "source": r[2], "page_number": r[3]}
+            for r in rows
+        ]
 
     def semantic_in_source(self, embedding, source: str, n: int) -> list[dict]:
         """Top-n chunks BY VECTOR SIMILARITY restricted to one source document."""
