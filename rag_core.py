@@ -634,7 +634,7 @@ class RagEngine:
         # Safety guard: if there is no context, never call the model —
         # otherwise it might answer from its own outside knowledge.
         if not context_block.strip():
-            return {"answer": NO_INFO_MESSAGE, "sources": []}
+            return {"answer": NO_INFO_MESSAGE, "sources": [], "whole_book": False}
 
         messages = build_messages(question, context_block, history, directive)
         answer_text = self.llm.generate(SYSTEM_PROMPT, messages)
@@ -642,8 +642,13 @@ class RagEngine:
             # Model returned nothing usable (e.g. reasoning consumed the whole token
             # budget) — show a friendly message instead of an empty bubble.
             answer_text = "מצטער, לא הצלחתי לנסח תשובה לשאלה הזו. נסו לנסח אותה מעט אחרת."
-        # Whole-book mode gathers many chunks from one book — show at most ~10 sources.
-        return {"answer": answer_text, "sources": _sample_evenly(top_chunks, 10)}
+        # Whole-book mode gathers many chunks from one book — show at most ~10 sources,
+        # and flag it so the UI can note the answer covers the whole book.
+        return {
+            "answer": answer_text,
+            "sources": _sample_evenly(top_chunks, 10),
+            "whole_book": bool(named),
+        }
 
 
 # ---------------------------------------------------------------------------

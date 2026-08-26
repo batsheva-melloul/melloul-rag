@@ -124,6 +124,9 @@ class AskResponse(BaseModel):
     """The answer plus the sources it came from."""
     answer: str
     sources: list[Source]
+    # True when the answer used whole-book mode (read a wide sample of one book) —
+    # lets the UI note that it's based on more passages than the few shown.
+    whole_book: bool = False
 
 
 @app.get("/corpora", response_model=list[Corpus])
@@ -167,7 +170,11 @@ def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
             sources=[],
         )
     logger.info("ask: answered (sources=%d)", len(result["sources"]))
-    return AskResponse(answer=result["answer"], sources=result["sources"])
+    return AskResponse(
+        answer=result["answer"],
+        sources=result["sources"],
+        whole_book=result.get("whole_book", False),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,11 @@ function MessageBubble({ message }) {
           </div>
         )}
         {!isUser && <SourceTags sources={message.sources} answer={message.text} />}
+        {message.wholeBook && (
+          <div className="wholebook-note">
+            📚 התשובה מבוססת על כל הספר — כאן מוצגים מקורות מייצגים בלבד.
+          </div>
+        )}
         {hasSources && (
           <button
             type="button"

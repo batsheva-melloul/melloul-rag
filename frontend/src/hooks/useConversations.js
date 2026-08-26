@@ -99,7 +99,7 @@ export function useConversations(corpusId) {
         ...c,
         messages: [
           ...c.messages,
-          { role: "bot", text: data.answer, sources: data.sources },
+          { role: "bot", text: data.answer, sources: data.sources, wholeBook: data.whole_book },
         ],
         updatedAt: Date.now(),
       }));
