@@ -1124,3 +1124,14 @@ body {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+/* Small note shown when an answer used whole-book mode */
+.wholebook-note {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
