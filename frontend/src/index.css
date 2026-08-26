@@ -976,11 +976,35 @@ body {
 /* ---------------------------------------------------------------------------
    Flashcards: interactive ```flashcards blocks (click a card to flip)
    --------------------------------------------------------------------------- */
+/* Flashcard answers read better on a WIDE canvas, so a message that contains a
+   flashcards grid gets a wider bubble than a normal text bubble. */
+.message-row.bot:has(.flashcards) {
+  max-width: 98%;
+  width: 98%;
+}
+.bubble:has(.flashcards) {
+  flex: 1;
+}
+/* A FIXED number of columns (not auto-fill). auto-fill recomputed the column
+   count from the bubble width, so flipping a card to a longer answer widened
+   the bubble and reshuffled the whole grid (2->4 columns). With a fixed count
+   the layout never reflows — only the individual card / its row may resize.
+   Wide by default (3 across), stepping down on narrower screens. */
 .flashcards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin: 0.85rem 0;
+}
+@media (max-width: 1000px) {
+  .flashcards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 620px) {
+  .flashcards {
+    grid-template-columns: 1fr;   /* one column on narrow phones */
+  }
 }
 .flashcard {
   display: flex;
