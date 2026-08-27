@@ -15,13 +15,30 @@ export async function fetchCorpora(accessToken = "") {
 }
 
 /**
+ * Fetch the list of book (source) filenames in a corpus, for the book-picker.
+ * Returns a sorted array of strings.
+ */
+export async function fetchBooks(corpusId, accessToken = "") {
+  const response = await fetch(
+    `${API_BASE}/books?corpus_id=${encodeURIComponent(corpusId)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) {
+    throw new Error("Failed to load books");
+  }
+  return response.json();
+}
+
+/**
  * Send a question (plus the conversation so far) to a specific corpus and
  * return { answer, sources }. The accessToken authenticates the request.
  *
  * history: [{ role: "user" | "bot", text: string }, ...]
+ * book (optional): an exact source filename to confine retrieval to one book.
  */
 export async function askQuestion(
-  question, history = [], accessToken = "", corpusId, directive = "", comprehensive = false
+  question, history = [], accessToken = "", corpusId,
+  directive = "", comprehensive = false, book = ""
 ) {
   const trimmedHistory = history.map((m) => ({ role: m.role, text: m.text }));
 
@@ -37,6 +54,7 @@ export async function askQuestion(
       corpus_id: corpusId,
       directive,
       comprehensive,
+      book,
     }),
   });
 

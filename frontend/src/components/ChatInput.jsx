@@ -9,7 +9,12 @@ import { TEMPLATES } from "../data/templates";
 
 const MAX_HEIGHT = 200; // px — matches .input max-height; beyond this it scrolls
 
-function ChatInput({ onSend, disabled }) {
+// A book filename shown in the picker without its ".pdf" extension.
+function bookLabel(name) {
+  return name.replace(/\.pdf$/i, "");
+}
+
+function ChatInput({ onSend, disabled, books = [], selectedBook = "", onSelectBook }) {
   const [text, setText] = useState("");
   const [template, setTemplate] = useState(null); // active template, or null
   const textareaRef = useRef(null);
@@ -40,9 +45,9 @@ function ChatInput({ onSend, disabled }) {
       // Chat shows a short label; the TOPIC is the search question, the template's
       // directive shapes the format, and comprehensive=true enables whole-book mode.
       const display = `${template.icon} ${template.label}: ${topic}`;
-      onSend(display, topic, template.directive, true);
+      onSend(display, topic, template.directive, true, selectedBook);
     } else {
-      onSend(topic);
+      onSend(topic, topic, "", false, selectedBook);
     }
 
     setText("");
@@ -63,6 +68,26 @@ function ChatInput({ onSend, disabled }) {
 
   return (
     <div className="input-area">
+      {books.length > 0 && (
+        <div className="book-picker">
+          <span className="book-picker-label">📚 שאלו מתוך:</span>
+          <select
+            className="book-select"
+            value={selectedBook}
+            onChange={(e) => onSelectBook && onSelectBook(e.target.value)}
+            disabled={disabled}
+            title="בחרו ספר מסוים או השאירו 'כל הספרים'"
+          >
+            <option value="">כל הספרים</option>
+            {books.map((b) => (
+              <option key={b} value={b}>
+                {bookLabel(b)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="template-bar">
         {TEMPLATES.map((t) => (
           <button

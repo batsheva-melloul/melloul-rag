@@ -7,6 +7,7 @@ import ChatInput from "./components/ChatInput";
 import LoginScreen from "./components/LoginScreen";
 import { useConversations } from "./hooks/useConversations";
 import { useCorpora } from "./hooks/useCorpora";
+import { useBooks } from "./hooks/useBooks";
 import { DEMO_MODE } from "./config";
 
 // The top-level component decides what to show:
@@ -44,6 +45,7 @@ function AuthGate() {
 // The actual chat app, shown only to signed-in users.
 function ChatApp() {
   const { corpora, selectedId, setSelectedId } = useCorpora();
+  const { books, selectedBook, setSelectedBook } = useBooks(selectedId);
   const {
     conversations,
     activeId,
@@ -76,7 +78,13 @@ function ChatApp() {
 
         <div className="chat-card">
           <MessageList messages={messages} loading={loading} />
-          <ChatInput onSend={sendQuestion} disabled={loading} />
+          <ChatInput
+            onSend={sendQuestion}
+            disabled={loading}
+            books={books}
+            selectedBook={selectedBook}
+            onSelectBook={setSelectedBook}
+          />
         </div>
       </div>
     </div>
