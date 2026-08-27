@@ -454,6 +454,23 @@ def retrieve_top_chunks(question: str, store, llm) -> list[dict]:
     ]
 
 
+def retrieve_in_source(question: str, store, source: str, llm) -> list[dict]:
+    """
+    Top chunks BY SIMILARITY within ONE chosen book — used when the user has
+    explicitly picked a book in the UI's book-picker. Unlike whole-book mode this
+    still ranks by relevance to the question; it just never leaves that one book.
+    """
+    question_embedding = embed_text(question, llm)
+    candidates = store.semantic_in_source(question_embedding, source, RERANK_POOL)
+    if not candidates:
+        return []
+    best = _mmr_rerank(question_embedding, candidates, FINAL_K, MMR_LAMBDA)
+    return [
+        {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
+        for c in best
+    ]
+
+
 def _sample_evenly(items: list, k: int) -> list:
     """Pick k items spread evenly across the list (keeps order, no duplicates)."""
     if len(items) <= k:
@@ -602,7 +619,8 @@ class RagEngine:
         return index_pdf_bytes(self.store, self.llm, source, version, data)
 
     def answer(self, question: str, history: list[dict] | None = None,
-               directive: str = "", comprehensive: bool = False) -> dict:
+               directive: str = "", comprehensive: bool = False,
+               book: str = "") -> dict:
         """
         Answer a question grounded in the documents, with conversation memory.
         history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
@@ -610,6 +628,9 @@ class RagEngine:
         retrieval so search matches the topic, not the boilerplate.
         `comprehensive` (template requests): if the query names a specific book, read a
         wide sample across the WHOLE book so the output covers all of it.
+        `book` (optional): an exact source filename picked in the UI's book-picker —
+        when set, retrieval is confined to that one book (whole-book if comprehensive,
+        otherwise the most relevant passages within it).
         Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
         """
         history = history or []
@@ -619,15 +640,31 @@ class RagEngine:
         # runs on the rewritten query; the answer still uses the user's own wording.
         search_query = rewrite_query(question, history, self.llm)
 
-        # WHOLE-BOOK mode: for a comprehensive request (a template) that clearly names
-        # a book, sample across the whole book instead of just the top-K matches.
-        named = (_match_named_source(search_query, self.store.sources())
-                 if comprehensive else None)
-        if named:
-            logger.info("Whole-book mode for: %s", named)
-            top_chunks = retrieve_whole_book(self.store, named)
+        book = (book or "").strip()
+        if book:
+            # The user explicitly scoped the chat to one book (book-picker). Confine
+            # retrieval to it: whole-book for a comprehensive/template request, else
+            # the passages within that book most relevant to the question.
+            if comprehensive:
+                logger.info("Whole-book mode (picked book): %s", book)
+                top_chunks = retrieve_whole_book(self.store, book)
+                whole_book = True
+            else:
+                logger.info("Scoped retrieval to picked book: %s", book)
+                top_chunks = retrieve_in_source(search_query, self.store, book, self.llm)
+                whole_book = False
         else:
-            top_chunks = retrieve_top_chunks(search_query, self.store, self.llm)
+            # WHOLE-BOOK mode: for a comprehensive request (a template) that clearly
+            # names a book, sample across the whole book instead of the top-K matches.
+            named = (_match_named_source(search_query, self.store.sources())
+                     if comprehensive else None)
+            if named:
+                logger.info("Whole-book mode for: %s", named)
+                top_chunks = retrieve_whole_book(self.store, named)
+                whole_book = True
+            else:
+                top_chunks = retrieve_top_chunks(search_query, self.store, self.llm)
+                whole_book = False
 
         context_block = build_context_block(top_chunks)
 
@@ -647,7 +684,7 @@ class RagEngine:
         return {
             "answer": answer_text,
             "sources": _sample_evenly(top_chunks, 10),
-            "whole_book": bool(named),
+            "whole_book": whole_book,
         }
 
 

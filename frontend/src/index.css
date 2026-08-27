@@ -648,6 +648,40 @@ body {
   border-top: 1px solid var(--border);
 }
 
+/* Book-picker: scope the chat to one book (or all books) — sits above the
+   template chips. */
+.book-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px 0;
+}
+.book-picker-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.book-select {
+  flex: 1;
+  min-width: 0;               /* allow it to shrink within the row */
+  max-width: 340px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bot-bubble);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.book-select:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.book-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .template-bar {
   display: flex;
   flex-wrap: wrap;

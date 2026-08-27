@@ -77,7 +77,7 @@ export function useConversations(corpusId) {
   // formatting instruction. For template buttons the bubble shows a short label
   // ("🗂️ כרטיסיות: <נושא>") while the topic is searched and the directive shapes
   // the format — kept apart so search matches the topic, not the boilerplate.
-  async function sendQuestion(displayText, questionText, directive = "", comprehensive = false) {
+  async function sendQuestion(displayText, questionText, directive = "", comprehensive = false, book = "") {
     const shown = (displayText || "").trim();
     const question = (questionText ?? displayText ?? "").trim();
     if (!shown || loading || !active) return;
@@ -94,7 +94,7 @@ export function useConversations(corpusId) {
 
     try {
       const token = await getAccessToken(instance, accounts);
-      const data = await askQuestion(question, history, token, corpusId, directive, comprehensive);
+      const data = await askQuestion(question, history, token, corpusId, directive, comprehensive, book);
       updateActive((c) => ({
         ...c,
         messages: [

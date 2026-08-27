@@ -105,6 +105,9 @@ class AskRequest(BaseModel):
     # Template requests set this: if the question names a book, read the whole book
     # (a wide sample) instead of only the top matches.
     comprehensive: bool = False
+    # Optional book scope from the UI's book-picker: an exact source filename.
+    # When set, retrieval is confined to that one book.
+    book: str = ""
 
 
 class Corpus(BaseModel):
@@ -139,6 +142,21 @@ def list_corpora(user: dict = Depends(verify_token)) -> list[Corpus]:
     ]
 
 
+@app.get("/books", response_model=list[str])
+def list_books(corpus_id: str = DEFAULT_CORPUS_ID,
+               user: dict = Depends(verify_token)) -> list[str]:
+    """
+    Return the book (source) filenames in a corpus, for the UI's book-picker.
+    Protected the same way as /ask: valid token AND access to the corpus.
+    """
+    corpus = get_corpus(corpus_id)
+    if corpus is None:
+        raise HTTPException(status_code=404, detail=f"Unknown corpus: {corpus_id}")
+    if not has_corpus_access(user, corpus):
+        raise HTTPException(status_code=403, detail="You do not have access to this corpus.")
+    return sorted(engines[corpus_id].store.sources())
+
+
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
     """
@@ -160,7 +178,7 @@ def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
     history = [{"role": m.role, "text": m.text} for m in request.history]
     try:
         result = engine.answer(request.question, history, directive=request.directive,
-                               comprehensive=request.comprehensive)
+                               comprehensive=request.comprehensive, book=request.book)
     except Exception:
         # Don't leak internal errors to the client; log them and return a
         # friendly message the chat UI can display.
