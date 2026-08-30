@@ -5,7 +5,7 @@ import { getAccessToken } from "../auth/getToken";
 
 /**
  * Loads the list of books (source filenames) for the given corpus and tracks
- * which one is selected in the book-picker. An empty selectedBook ("") means
+ * which ones are selected in the book-picker. An empty selectedBooks array means
  * "all books" (the default — search the whole corpus).
  *
  * Switching corpus reloads the books and clears the selection.
@@ -13,13 +13,13 @@ import { getAccessToken } from "../auth/getToken";
 export function useBooks(corpusId) {
   const { instance, accounts } = useMsal();
   const [books, setBooks] = useState([]);
-  const [selectedBook, setSelectedBook] = useState("");
+  const [selectedBooks, setSelectedBooks] = useState([]);
 
   useEffect(() => {
     if (!corpusId) return;
     let cancelled = false;
     // A different corpus has a different set of books — reset the scope.
-    setSelectedBook("");
+    setSelectedBooks([]);
     setBooks([]);
     (async () => {
       try {
@@ -35,5 +35,5 @@ export function useBooks(corpusId) {
     };
   }, [corpusId]);
 
-  return { books, selectedBook, setSelectedBook };
+  return { books, selectedBooks, setSelectedBooks };
 }

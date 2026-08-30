@@ -45,7 +45,7 @@ function AuthGate() {
 // The actual chat app, shown only to signed-in users.
 function ChatApp() {
   const { corpora, selectedId, setSelectedId } = useCorpora();
-  const { books, selectedBook, setSelectedBook } = useBooks(selectedId);
+  const { books, selectedBooks, setSelectedBooks } = useBooks(selectedId);
   const {
     conversations,
     activeId,
@@ -82,8 +82,8 @@ function ChatApp() {
             onSend={sendQuestion}
             disabled={loading}
             books={books}
-            selectedBook={selectedBook}
-            onSelectBook={setSelectedBook}
+            selectedBooks={selectedBooks}
+            onSelectBooks={setSelectedBooks}
           />
         </div>
       </div>
