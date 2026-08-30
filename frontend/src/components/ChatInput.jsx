@@ -14,10 +14,22 @@ function bookLabel(name) {
   return name.replace(/\.pdf$/i, "");
 }
 
-function ChatInput({ onSend, disabled, books = [], selectedBook = "", onSelectBook }) {
+function ChatInput({ onSend, disabled, books = [], selectedBooks = [], onSelectBooks }) {
   const [text, setText] = useState("");
   const [template, setTemplate] = useState(null); // active template, or null
   const textareaRef = useRef(null);
+
+  // Books not yet chosen — the ones the "add a book" dropdown can still offer.
+  const available = books.filter((b) => !selectedBooks.includes(b));
+
+  function addBook(event) {
+    const value = event.target.value;
+    if (value && onSelectBooks) onSelectBooks([...selectedBooks, value]);
+    event.target.value = ""; // reset back to the placeholder
+  }
+  function removeBook(book) {
+    if (onSelectBooks) onSelectBooks(selectedBooks.filter((b) => b !== book));
+  }
 
   function autoGrow() {
     const el = textareaRef.current;
@@ -45,9 +57,9 @@ function ChatInput({ onSend, disabled, books = [], selectedBook = "", onSelectBo
       // Chat shows a short label; the TOPIC is the search question, the template's
       // directive shapes the format, and comprehensive=true enables whole-book mode.
       const display = `${template.icon} ${template.label}: ${topic}`;
-      onSend(display, topic, template.directive, true, selectedBook);
+      onSend(display, topic, template.directive, true, selectedBooks);
     } else {
-      onSend(topic, topic, "", false, selectedBook);
+      onSend(topic, topic, "", false, selectedBooks);
     }
 
     setText("");
@@ -71,20 +83,54 @@ function ChatInput({ onSend, disabled, books = [], selectedBook = "", onSelectBo
       {books.length > 0 && (
         <div className="book-picker">
           <span className="book-picker-label">📚 שאלו מתוך:</span>
-          <select
-            className="book-select"
-            value={selectedBook}
-            onChange={(e) => onSelectBook && onSelectBook(e.target.value)}
-            disabled={disabled}
-            title="בחרו ספר מסוים או השאירו 'כל הספרים'"
-          >
-            <option value="">כל הספרים</option>
-            {books.map((b) => (
-              <option key={b} value={b}>
-                {bookLabel(b)}
+
+          {selectedBooks.length === 0 ? (
+            <span className="book-all">כל הספרים</span>
+          ) : (
+            <div className="book-chips">
+              {selectedBooks.map((b) => (
+                <span key={b} className="book-chip">
+                  {bookLabel(b)}
+                  <button
+                    type="button"
+                    className="book-chip-x"
+                    onClick={() => removeBook(b)}
+                    disabled={disabled}
+                    aria-label={`הסר ${bookLabel(b)}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                className="book-clear"
+                onClick={() => onSelectBooks && onSelectBooks([])}
+                disabled={disabled}
+              >
+                נקה הכל
+              </button>
+            </div>
+          )}
+
+          {available.length > 0 && (
+            <select
+              className="book-select"
+              value=""
+              onChange={addBook}
+              disabled={disabled}
+              title="הוסיפו ספר לרשימה"
+            >
+              <option value="">
+                {selectedBooks.length ? "➕ הוסיפו ספר…" : "➕ בחרו ספר…"}
               </option>
-            ))}
-          </select>
+              {available.map((b) => (
+                <option key={b} value={b}>
+                  {bookLabel(b)}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 

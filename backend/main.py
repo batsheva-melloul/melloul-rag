@@ -105,9 +105,9 @@ class AskRequest(BaseModel):
     # Template requests set this: if the question names a book, read the whole book
     # (a wide sample) instead of only the top matches.
     comprehensive: bool = False
-    # Optional book scope from the UI's book-picker: an exact source filename.
-    # When set, retrieval is confined to that one book.
-    book: str = ""
+    # Optional book scope from the UI's book-picker: exact source filenames.
+    # When non-empty, retrieval is confined to those book(s).
+    books: list[str] = []
 
 
 class Corpus(BaseModel):
@@ -178,7 +178,7 @@ def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
     history = [{"role": m.role, "text": m.text} for m in request.history]
     try:
         result = engine.answer(request.question, history, directive=request.directive,
-                               comprehensive=request.comprehensive, book=request.book)
+                               comprehensive=request.comprehensive, books=request.books)
     except Exception:
         # Don't leak internal errors to the client; log them and return a
         # friendly message the chat UI can display.

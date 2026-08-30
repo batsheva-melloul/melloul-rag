@@ -471,6 +471,36 @@ def retrieve_in_source(question: str, store, source: str, llm) -> list[dict]:
     ]
 
 
+def retrieve_in_sources(question: str, store, sources: list[str], llm) -> list[dict]:
+    """
+    Top chunks BY SIMILARITY across SEVERAL chosen books — used when the user picks
+    more than one book in the book-picker. Each book contributes a share of the
+    candidate pool; the combined pool is then reranked so the answer draws from all
+    of them, weighted by relevance to the question.
+    """
+    sources = [s for s in sources if s]
+    if not sources:
+        return []
+    if len(sources) == 1:
+        return retrieve_in_source(question, store, sources[0], llm)
+
+    question_embedding = embed_text(question, llm)
+    per_book = max(6, RERANK_POOL // len(sources))  # split the pool across books
+    candidates, seen = [], set()
+    for source in sources:
+        for c in store.semantic_in_source(question_embedding, source, per_book):
+            if c["id"] not in seen:
+                seen.add(c["id"])
+                candidates.append(c)
+    if not candidates:
+        return []
+    best = _mmr_rerank(question_embedding, candidates, FINAL_K, MMR_LAMBDA)
+    return [
+        {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
+        for c in best
+    ]
+
+
 def _sample_evenly(items: list, k: int) -> list:
     """Pick k items spread evenly across the list (keeps order, no duplicates)."""
     if len(items) <= k:
@@ -490,6 +520,28 @@ def retrieve_whole_book(store, source: str) -> list[dict]:
         {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
         for c in chunks
     ]
+
+
+def retrieve_whole_books(store, sources: list[str]) -> list[dict]:
+    """
+    WHOLE-BOOK mode across SEVERAL books: sample evenly within each selected book,
+    splitting the total chunk budget between them so the combined context still
+    covers every chosen book without blowing up the prompt size.
+    """
+    sources = [s for s in sources if s]
+    if not sources:
+        return []
+    if len(sources) == 1:
+        return retrieve_whole_book(store, sources[0])
+
+    per_book = max(1, WHOLE_BOOK_CHUNKS // len(sources))
+    out = []
+    for source in sources:
+        for c in _sample_evenly(store.source_chunks(source), per_book):
+            out.append(
+                {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
+            )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -620,7 +672,7 @@ class RagEngine:
 
     def answer(self, question: str, history: list[dict] | None = None,
                directive: str = "", comprehensive: bool = False,
-               book: str = "") -> dict:
+               books: list[str] | None = None) -> dict:
         """
         Answer a question grounded in the documents, with conversation memory.
         history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
@@ -628,9 +680,9 @@ class RagEngine:
         retrieval so search matches the topic, not the boilerplate.
         `comprehensive` (template requests): if the query names a specific book, read a
         wide sample across the WHOLE book so the output covers all of it.
-        `book` (optional): an exact source filename picked in the UI's book-picker —
-        when set, retrieval is confined to that one book (whole-book if comprehensive,
-        otherwise the most relevant passages within it).
+        `books` (optional): exact source filenames picked in the UI's book-picker —
+        when non-empty, retrieval is confined to those book(s) (whole-book if
+        comprehensive, otherwise the most relevant passages within them).
         Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
         """
         history = history or []
@@ -640,18 +692,18 @@ class RagEngine:
         # runs on the rewritten query; the answer still uses the user's own wording.
         search_query = rewrite_query(question, history, self.llm)
 
-        book = (book or "").strip()
-        if book:
-            # The user explicitly scoped the chat to one book (book-picker). Confine
-            # retrieval to it: whole-book for a comprehensive/template request, else
-            # the passages within that book most relevant to the question.
+        books = [b.strip() for b in (books or []) if b and b.strip()]
+        if books:
+            # The user scoped the chat to one or more books (book-picker). Confine
+            # retrieval to them: whole-book for a comprehensive/template request, else
+            # the passages within those books most relevant to the question.
             if comprehensive:
-                logger.info("Whole-book mode (picked book): %s", book)
-                top_chunks = retrieve_whole_book(self.store, book)
+                logger.info("Whole-book mode (picked books): %s", books)
+                top_chunks = retrieve_whole_books(self.store, books)
                 whole_book = True
             else:
-                logger.info("Scoped retrieval to picked book: %s", book)
-                top_chunks = retrieve_in_source(search_query, self.store, book, self.llm)
+                logger.info("Scoped retrieval to picked books: %s", books)
+                top_chunks = retrieve_in_sources(search_query, self.store, books, self.llm)
                 whole_book = False
         else:
             # WHOLE-BOOK mode: for a comprehensive request (a template) that clearly

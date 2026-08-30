@@ -34,11 +34,11 @@ export async function fetchBooks(corpusId, accessToken = "") {
  * return { answer, sources }. The accessToken authenticates the request.
  *
  * history: [{ role: "user" | "bot", text: string }, ...]
- * book (optional): an exact source filename to confine retrieval to one book.
+ * books (optional): exact source filenames to confine retrieval to those book(s).
  */
 export async function askQuestion(
   question, history = [], accessToken = "", corpusId,
-  directive = "", comprehensive = false, book = ""
+  directive = "", comprehensive = false, books = []
 ) {
   const trimmedHistory = history.map((m) => ({ role: m.role, text: m.text }));
 
@@ -54,7 +54,7 @@ export async function askQuestion(
       corpus_id: corpusId,
       directive,
       comprehensive,
-      book,
+      books,
     }),
   });
 

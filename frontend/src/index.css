@@ -648,11 +648,12 @@ body {
   border-top: 1px solid var(--border);
 }
 
-/* Book-picker: scope the chat to one book (or all books) — sits above the
-   template chips. */
+/* Book-picker: scope the chat to one or more books (or all books) — sits above
+   the template chips. Chosen books show as removable chips; a dropdown adds more. */
 .book-picker {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 20px 0;
 }
@@ -661,10 +662,66 @@ body {
   color: var(--muted);
   white-space: nowrap;
 }
+.book-all {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-weight: 600;
+}
+.book-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.book-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 0.82rem;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.book-chip-x {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.book-chip-x:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.book-clear {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.book-clear:hover:not(:disabled) {
+  color: var(--accent);
+}
 .book-select {
-  flex: 1;
   min-width: 0;               /* allow it to shrink within the row */
-  max-width: 340px;
+  max-width: 260px;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -677,7 +734,9 @@ body {
 .book-select:hover:not(:disabled) {
   border-color: var(--accent);
 }
-.book-select:disabled {
+.book-select:disabled,
+.book-chip-x:disabled,
+.book-clear:disabled {
   opacity: 0.5;
   cursor: default;
 }
