@@ -68,7 +68,14 @@ function MessageBubble({ message }) {
           <button
             type="button"
             className="save-button"
-            onClick={() => downloadAnswer(contentRef.current, message.text, "עוזר-החברה")}
+            onClick={() =>
+              downloadAnswer({
+                element: contentRef.current,
+                rawText: message.text,
+                question: message.question,
+                sources: message.sources,
+              })
+            }
             title="שמור את התשובה כקובץ"
           >
             ⬇ שמור כקובץ

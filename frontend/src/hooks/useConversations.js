@@ -99,7 +99,8 @@ export function useConversations(corpusId) {
         ...c,
         messages: [
           ...c.messages,
-          { role: "bot", text: data.answer, sources: data.sources, wholeBook: data.whole_book },
+          // Keep the question on the bot turn too, so "save as file" can include it.
+          { role: "bot", text: data.answer, sources: data.sources, wholeBook: data.whole_book, question: shown },
         ],
         updatedAt: Date.now(),
       }));
