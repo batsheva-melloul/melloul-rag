@@ -474,9 +474,13 @@ def retrieve_in_source(question: str, store, source: str, llm) -> list[dict]:
 def retrieve_in_sources(question: str, store, sources: list[str], llm) -> list[dict]:
     """
     Top chunks BY SIMILARITY across SEVERAL chosen books — used when the user picks
-    more than one book in the book-picker. Each book contributes a share of the
-    candidate pool; the combined pool is then reranked so the answer draws from all
-    of them, weighted by relevance to the question.
+    more than one book in the book-picker.
+
+    Each selected book gets a GUARANTEED share of its most relevant passages, so a
+    comparison across books ("contrast the authors' views") has enough material from
+    every book — not just whichever book happens to rank highest. The per-book share
+    scales down as more books are picked, and the total is capped (~30 chunks) so it
+    stays far cheaper and faster than whole-book mode.
     """
     sources = [s for s in sources if s]
     if not sources:
@@ -485,20 +489,15 @@ def retrieve_in_sources(question: str, store, sources: list[str], llm) -> list[d
         return retrieve_in_source(question, store, sources[0], llm)
 
     question_embedding = embed_text(question, llm)
-    per_book = max(6, RERANK_POOL // len(sources))  # split the pool across books
-    candidates, seen = [], set()
+    # e.g. 2 books -> 8 each (16), 3 -> 8 (24), 4 -> 7 (28), 5 -> 6 (30), capped.
+    per_book = min(8, max(4, RERANK_POOL // len(sources)))
+    out = []
     for source in sources:
         for c in store.semantic_in_source(question_embedding, source, per_book):
-            if c["id"] not in seen:
-                seen.add(c["id"])
-                candidates.append(c)
-    if not candidates:
-        return []
-    best = _mmr_rerank(question_embedding, candidates, FINAL_K, MMR_LAMBDA)
-    return [
-        {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
-        for c in best
-    ]
+            out.append(
+                {"text": c["text"], "source": c["source"], "page_number": c["page_number"]}
+            )
+    return out
 
 
 def _sample_evenly(items: list, k: int) -> list:
