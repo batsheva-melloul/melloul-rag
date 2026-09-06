@@ -6,6 +6,7 @@ import SourceTags from "./SourceTags";
 import FlashCards from "./FlashCards";
 import Quiz from "./Quiz";
 import { downloadAnswer } from "../utils/download";
+import { downloadPptx } from "../utils/pptx";
 
 // A single chat message: an avatar plus the bubble with text and (for bot) sources.
 // Bot answers are rendered as Markdown (bold, lists, TABLES via remark-gfm);
@@ -82,22 +83,39 @@ function MessageBubble({ message }) {
           </div>
         )}
         {hasSources && (
-          <button
-            type="button"
-            className="save-button"
-            onClick={() =>
-              downloadAnswer({
-                element: contentRef.current,
-                rawText: message.text,
-                question: message.question,
-                books: message.books,
-                sources: message.sources,
-              })
-            }
-            title="שמור את התשובה כקובץ"
-          >
-            ⬇ שמור כקובץ
-          </button>
+          <div className="answer-actions">
+            <button
+              type="button"
+              className="save-button"
+              onClick={() =>
+                downloadAnswer({
+                  element: contentRef.current,
+                  rawText: message.text,
+                  question: message.question,
+                  books: message.books,
+                  sources: message.sources,
+                })
+              }
+              title="שמור את התשובה כקובץ"
+            >
+              ⬇ שמור כקובץ
+            </button>
+            <button
+              type="button"
+              className="save-button"
+              onClick={() =>
+                downloadPptx({
+                  question: message.question,
+                  rawText: message.text,
+                  books: message.books,
+                  sources: message.sources,
+                })
+              }
+              title="הורד את התשובה כמצגת PowerPoint"
+            >
+              📊 הורד כמצגת
+            </button>
+          </div>
         )}
       </div>
     </div>
