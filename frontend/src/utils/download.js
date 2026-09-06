@@ -33,6 +33,9 @@ const STYLES = `
   .dl-section { margin: 0 0 22px; }
   .dl-label { font-size: 0.82rem; font-weight: 700; color: #5b7fb0; margin: 0 0 6px; }
   .dl-question { background: #eef1f6; border-radius: 12px; padding: 12px 16px; margin: 0; font-weight: 600; }
+  .dl-books { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .dl-book-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+                  border-radius: 999px; background: rgba(91,127,176,0.14); color: #1f2430; font-size: 0.82rem; }
   .dl-divider { border: none; border-top: 1px solid #e6e8ec; margin: 22px 0; }
   .dl-sources { list-style: none; padding: 0; margin: 0; }
   .dl-source { border: 1px solid #e6e8ec; border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
@@ -132,8 +135,13 @@ function safeFileName(name) {
  *  - question: the user's question (shown at the top)
  *  - sources : [{ source, page_number, text }] the answer was based on
  */
+// A book filename shown as a chip without its ".pdf" extension.
+function bookLabel(name) {
+  return String(name).replace(/\.pdf$/i, "");
+}
+
 export function downloadAnswer(opts) {
-  const { element, rawText, question = "", sources = [], title = "עוזר-החברה" } = opts;
+  const { element, rawText, question = "", books = [], sources = [], title = "עוזר-החברה" } = opts;
 
   // --- the answer body (rebuilt for interactive answers, else as rendered) ---
   const caption = captionBefore(rawText);
@@ -147,9 +155,15 @@ export function downloadAnswer(opts) {
   if (!answerHtml) return;
 
   // --- assemble question + answer + sources ---
+  const booksHtml =
+    Array.isArray(books) && books.length
+      ? `<div class="dl-books">` +
+        books.map((b) => `<span class="dl-book-chip">📕 ${esc(bookLabel(b))}</span>`).join("") +
+        `</div>`
+      : "";
   const questionHtml = question
     ? `<div class="dl-section"><p class="dl-label">השאלה</p>` +
-      `<p class="dl-question">${esc(question)}</p></div>`
+      `<p class="dl-question">${esc(question)}</p>${booksHtml}</div>`
     : "";
   const answerSection =
     `<div class="dl-section"><p class="dl-label">התשובה</p>${answerHtml}</div>`;
