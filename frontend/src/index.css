@@ -1247,9 +1247,14 @@ body {
 }
 
 /* "Save answer as a file" button under a bot answer */
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
 .save-button {
   align-self: flex-start;
-  margin-top: 8px;
   padding: 5px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
