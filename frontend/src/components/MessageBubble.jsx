@@ -40,17 +40,34 @@ function Pre({ children }) {
 
 const MARKDOWN_COMPONENTS = { pre: Pre };
 
+// A book filename shown as a chip without its ".pdf" extension.
+function bookLabel(name) {
+  return name.replace(/\.pdf$/i, "");
+}
+
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const contentRef = useRef(null);
   const hasSources = !isUser && message.sources && message.sources.length > 0;
+  const scopedBooks = isUser && message.books ? message.books : [];
 
   return (
     <div className={`message-row ${isUser ? "user" : "bot"}`}>
       <div className="avatar">{isUser ? "🙂" : "🤖"}</div>
       <div className="bubble">
         {isUser ? (
-          <div className="bubble-text">{message.text}</div>
+          <>
+            <div className="bubble-text">{message.text}</div>
+            {scopedBooks.length > 0 && (
+              <div className="msg-books">
+                {scopedBooks.map((b) => (
+                  <span key={b} className="msg-book-chip">
+                    📕 {bookLabel(b)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <div className="bubble-text markdown" ref={contentRef}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
@@ -73,6 +90,7 @@ function MessageBubble({ message }) {
                 element: contentRef.current,
                 rawText: message.text,
                 question: message.question,
+                books: message.books,
                 sources: message.sources,
               })
             }

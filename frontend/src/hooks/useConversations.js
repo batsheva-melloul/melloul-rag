@@ -83,11 +83,13 @@ export function useConversations(corpusId) {
     if (!shown || loading || !active) return;
 
     const history = active.messages;
+    // Books this question was scoped to (from the book-picker chips), if any.
+    const scopedBooks = Array.isArray(books) ? books : [];
 
     updateActive((c) => ({
       ...c,
       title: c.messages.length === 0 ? shown.slice(0, 30) : c.title,
-      messages: [...c.messages, { role: "user", text: shown }],
+      messages: [...c.messages, { role: "user", text: shown, books: scopedBooks }],
       updatedAt: Date.now(),
     }));
     setLoading(true);
@@ -99,8 +101,10 @@ export function useConversations(corpusId) {
         ...c,
         messages: [
           ...c.messages,
-          // Keep the question on the bot turn too, so "save as file" can include it.
-          { role: "bot", text: data.answer, sources: data.sources, wholeBook: data.whole_book, question: shown },
+          // Keep the question + its book scope on the bot turn too, so "save as
+          // file" can include both.
+          { role: "bot", text: data.answer, sources: data.sources,
+            wholeBook: data.whole_book, question: shown, books: scopedBooks },
         ],
         updatedAt: Date.now(),
       }));

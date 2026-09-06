@@ -439,6 +439,29 @@ body {
 
 /* --- Markdown-rendered bot answers --- */
 
+/* Book chips under a user's question — which book(s) it was scoped to. */
+.msg-books {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.msg-book-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .bubble-text.markdown {
   white-space: normal;       /* let block elements control spacing */
 }
