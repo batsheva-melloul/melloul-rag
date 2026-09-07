@@ -1090,6 +1090,59 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Slides preview: the ```slides block (the "מצגת" template) shown as slide cards
+   --------------------------------------------------------------------------- */
+.slides-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0.85rem 0;
+}
+.slides-deck-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.slide-card {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bot-bubble);
+  border-inline-start: 4px solid var(--accent);
+}
+.slide-card-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.slide-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.slide-card-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.slide-card-body ul {
+  margin: 0;
+  padding-inline-start: 20px;
+}
+.slide-card-body li {
+  margin: 2px 0;
+}
+
+/* ---------------------------------------------------------------------------
    Flashcards: interactive ```flashcards blocks (click a card to flip)
    --------------------------------------------------------------------------- */
 /* Flashcard answers read better on a WIDE canvas, so a message that contains a

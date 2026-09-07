@@ -5,6 +5,7 @@ import DOMPurify from "dompurify";
 import SourceTags from "./SourceTags";
 import FlashCards from "./FlashCards";
 import Quiz from "./Quiz";
+import Slides from "./Slides";
 import { downloadAnswer } from "../utils/download";
 import { downloadPptx } from "../utils/pptx";
 
@@ -28,6 +29,10 @@ function Pre({ children }) {
   // ```quiz -> interactive multiple-choice quiz with a score.
   if (lang === "quiz") {
     return <Quiz text={raw} />;
+  }
+  // ```slides -> a preview of the presentation (download builds the .pptx).
+  if (lang === "slides") {
+    return <Slides text={raw} />;
   }
   // ```infographic / ```svg -> sanitized HTML/SVG visual. Default DOMPurify keeps
   // styled HTML + SVG and strips only the dangerous parts (scripts, on* handlers,
