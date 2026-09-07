@@ -9,7 +9,19 @@ const NAVY = "1F2430";
 const BLUE = "466493";
 const ACCENT = "5B7FB0";
 const LIGHT = "EEF1F6";
-const MAX_BULLETS = 7; // per slide, before spilling onto a continuation slide
+const MAX_BULLETS = 6;        // per slide, before spilling onto a continuation slide
+const SLIDE_CHAR_BUDGET = 520; // and spill once the text on a slide gets this long
+
+// The chat shows a template question as "📘 מדריך למידה: <topic>". For a slide
+// title we want just the topic — drop a leading emoji + label prefix.
+function cleanTitle(q) {
+  let t = String(q || "").trim();
+  if (/^\p{Extended_Pictographic}/u.test(t)) {
+    const i = t.indexOf(": ");
+    t = i !== -1 ? t.slice(i + 2).trim() : t.replace(/^\p{Extended_Pictographic}+\s*/u, "").trim();
+  }
+  return t;
+}
 
 // Strip Markdown inline markup down to plain text for a slide.
 function plain(s) {
@@ -100,17 +112,33 @@ export function buildContentSlides(rawText) {
   return splitLong(parseSlides(rawText));
 }
 
-// Split any slide with too many bullets into "(המשך)" continuation slides.
+// Split a slide onto "(המשך)" continuation slides once it has too many bullets OR
+// too much text — so a few long paragraphs don't pile into one wall of text.
 function splitLong(slides) {
   const out = [];
   for (const s of slides) {
-    if (s.bullets.length <= MAX_BULLETS) {
-      out.push(s);
+    if (!s.bullets.length) {
+      out.push({ title: s.title, bullets: [] });
       continue;
     }
-    chunk(s.bullets, MAX_BULLETS).forEach((part, i) => {
-      out.push({ title: i === 0 ? s.title : `${s.title} (המשך)`, bullets: part });
-    });
+    let cur = [];
+    let chars = 0;
+    let first = true;
+    const flush = () => {
+      if (!cur.length) return;
+      out.push({ title: first ? s.title : `${s.title} (המשך)`, bullets: cur });
+      first = false;
+      cur = [];
+      chars = 0;
+    };
+    for (const b of s.bullets) {
+      if (cur.length && (chars + b.length > SLIDE_CHAR_BUDGET || cur.length >= MAX_BULLETS)) {
+        flush();
+      }
+      cur.push(b);
+      chars += b.length;
+    }
+    flush();
   }
   return out;
 }
@@ -140,11 +168,13 @@ export async function downloadPptx(opts) {
   pptx.layout = "LAYOUT_WIDE"; // 13.3 x 7.5 in
   const W = 13.3;
 
+  const titleText = cleanTitle(question);
+
   // --- Title slide ---
   const title = pptx.addSlide();
   title.background = { color: "FFFFFF" };
   title.addShape(pptx.ShapeType.rect, { x: 0, y: 3.3, w: W, h: 0.06, fill: { color: ACCENT } });
-  title.addText(plain(question) || "מצגת", {
+  title.addText(plain(titleText) || "מצגת", {
     x: 0.6, y: 2.0, w: W - 1.2, h: 1.2, fontSize: 34, bold: true, color: NAVY, valign: "bottom", ...RTL,
   });
   const subParts = ["עוזר החברה", new Date().toLocaleDateString("he-IL")];
@@ -168,9 +198,12 @@ export async function downloadPptx(opts) {
       text: b,
       options: { bullet: { indent: 18 }, breakLine: true, ...RTL },
     }));
+    // Shrink the font when a slide carries a lot of text, so it still fits.
+    const totalChars = s.bullets.reduce((n, b) => n + b.length, 0);
+    const fontSize = totalChars > 700 ? 13 : totalChars > 400 ? 15 : 18;
     slide.addText(bullets, {
       x: 0.6, y: s.title ? 1.5 : 0.6, w: W - 1.2, h: s.title ? 5.4 : 6.3,
-      fontSize: 18, color: NAVY, valign: "top", lineSpacingMultiple: 1.15,
+      fontSize, color: NAVY, valign: "top", lineSpacingMultiple: 1.15,
     });
   }
 
@@ -190,5 +223,5 @@ export async function downloadPptx(opts) {
     });
   }
 
-  await pptx.writeFile({ fileName: `${safeFileName(question)}.pptx` });
+  await pptx.writeFile({ fileName: `${safeFileName(titleText)}.pptx` });
 }
