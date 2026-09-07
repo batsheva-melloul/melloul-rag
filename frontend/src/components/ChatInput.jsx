@@ -57,9 +57,9 @@ function ChatInput({ onSend, disabled, books = [], selectedBooks = [], onSelectB
       // Chat shows a short label; the TOPIC is the search question, the template's
       // directive shapes the format, and comprehensive=true enables whole-book mode.
       const display = `${template.icon} ${template.label}: ${topic}`;
-      onSend(display, topic, template.directive, true, selectedBooks);
+      onSend(display, topic, template.directive, true, selectedBooks, template.id);
     } else {
-      onSend(topic, topic, "", false, selectedBooks);
+      onSend(topic, topic, "", false, selectedBooks, null);
     }
 
     setText("");

@@ -150,8 +150,38 @@ function safeFileName(name) {
 
 const RTL = { align: "right", rtlMode: true, fontFace: "Arial" };
 
+// LAYOUT_WIDE canvas (inches) and the shared theme geometry.
+const W = 13.3;
+const H = 7.5;
+const STRIPE = 0.22; // width of the accent stripe down the (RTL) right edge
+
+// A vertical accent stripe on the right edge — the theme's signature element.
+function addStripe(pptx, slide, color = ACCENT) {
+  slide.addShape(pptx.ShapeType.rect, { x: W - STRIPE, y: 0, w: STRIPE, h: H, fill: { color } });
+}
+
+// A colored header band with the slide title in white.
+function addHeader(pptx, slide, text) {
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W - STRIPE, h: 1.0, fill: { color: BLUE } });
+  slide.addText(text || "", {
+    x: 0.5, y: 0, w: W - STRIPE - 0.9, h: 1.0, fontSize: 22, bold: true,
+    color: "FFFFFF", valign: "middle", ...RTL,
+  });
+}
+
+// A quiet footer: brand on the left, slide number on the right.
+function addFooter(pptx, slide, idx, total) {
+  slide.addText("עוזר החברה", {
+    x: 0.4, y: H - 0.45, w: 4, h: 0.32, fontSize: 9, color: "9AA3B2", align: "left", fontFace: "Arial",
+  });
+  // Leading LRM keeps "3 / 5" from being visually reversed to "5 / 3" in an RTL deck.
+  slide.addText(`‎${idx} / ${total}`, {
+    x: W - 2.3, y: H - 0.45, w: 2.3 - STRIPE - 0.15, h: 0.32, fontSize: 9, color: "9AA3B2", align: "right", fontFace: "Arial",
+  });
+}
+
 /**
- * Build and download a .pptx from an existing answer.
+ * Build and download a designed .pptx from an existing answer.
  * opts: { question, rawText, books, sources }
  */
 export async function downloadPptx(opts) {
@@ -159,68 +189,65 @@ export async function downloadPptx(opts) {
 
   let content = splitLong(parseSlides(rawText));
   if (!content.length) {
-    // Nothing parsed (very short prose) — put the whole answer on one slide.
     content = [{ title: "", bullets: [plain(rawText)].filter(Boolean) }];
   }
 
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE"; // 13.3 x 7.5 in
-  const W = 13.3;
 
   const titleText = cleanTitle(question);
+  const total = content.length + 1 + (sources.length ? 1 : 0);
+  let n = 0;
 
-  // --- Title slide ---
+  // --- Hero title slide: full brand background ---
   const title = pptx.addSlide();
-  title.background = { color: "FFFFFF" };
-  title.addShape(pptx.ShapeType.rect, { x: 0, y: 3.3, w: W, h: 0.06, fill: { color: ACCENT } });
+  title.background = { color: BLUE };
+  title.addShape(pptx.ShapeType.rect, { x: W - 0.5, y: 0, w: 0.5, h: H, fill: { color: ACCENT } });
+  title.addText("מצגת", { x: 0.9, y: 1.7, w: W - 2.2, h: 0.5, fontSize: 16, color: "AEC1DD", ...RTL });
   title.addText(plain(titleText) || "מצגת", {
-    x: 0.6, y: 2.0, w: W - 1.2, h: 1.2, fontSize: 34, bold: true, color: NAVY, valign: "bottom", ...RTL,
+    x: 0.9, y: 2.2, w: W - 2.2, h: 1.7, fontSize: 40, bold: true, color: "FFFFFF", valign: "top", ...RTL,
   });
+  title.addShape(pptx.ShapeType.rect, { x: W - 1.2 - 2.6, y: 3.95, w: 2.6, h: 0.07, fill: { color: "FFFFFF" } });
   const subParts = ["עוזר החברה", new Date().toLocaleDateString("he-IL")];
-  if (books && books.length) {
-    subParts.push(books.map((b) => b.replace(/\.pdf$/i, "")).join(" · "));
-  }
+  if (books && books.length) subParts.push(books.map((b) => b.replace(/\.pdf$/i, "")).join(" · "));
   title.addText(subParts.join("  ·  "), {
-    x: 0.6, y: 3.5, w: W - 1.2, h: 0.8, fontSize: 14, color: ACCENT, ...RTL,
+    x: 0.9, y: 4.2, w: W - 2.2, h: 0.6, fontSize: 14, color: "CBD8EA", ...RTL,
   });
 
   // --- Content slides ---
   for (const s of content) {
     const slide = pptx.addSlide();
     slide.background = { color: "FFFFFF" };
-    if (s.title) {
-      slide.addText(s.title, {
-        x: 0.5, y: 0.35, w: W - 1.0, h: 0.9, fontSize: 24, bold: true, color: BLUE, valign: "top", ...RTL,
-      });
-    }
+    addStripe(pptx, slide);
+    if (s.title) addHeader(pptx, slide, s.title);
     const bullets = (s.bullets.length ? s.bullets : [""]).map((b) => ({
       text: b,
-      options: { bullet: { indent: 18 }, breakLine: true, ...RTL },
+      options: { bullet: { indent: 20 }, breakLine: true, paraSpaceAfter: 6, ...RTL },
     }));
-    // Shrink the font when a slide carries a lot of text, so it still fits.
-    const totalChars = s.bullets.reduce((n, b) => n + b.length, 0);
-    const fontSize = totalChars > 700 ? 13 : totalChars > 400 ? 15 : 18;
+    const totalChars = s.bullets.reduce((acc, b) => acc + b.length, 0);
+    const fontSize = totalChars > 700 ? 14 : totalChars > 400 ? 16 : 19;
     slide.addText(bullets, {
-      x: 0.6, y: s.title ? 1.5 : 0.6, w: W - 1.2, h: s.title ? 5.4 : 6.3,
-      fontSize, color: NAVY, valign: "top", lineSpacingMultiple: 1.15,
+      x: 0.6, y: s.title ? 1.35 : 0.6, w: W - STRIPE - 1.0, h: s.title ? 5.4 : 6.3,
+      fontSize, color: NAVY, valign: "top", lineSpacingMultiple: 1.18,
     });
+    addFooter(pptx, slide, (n += 1) + 1, total); // +1: title slide is #1
   }
 
   // --- Sources slide ---
   if (Array.isArray(sources) && sources.length) {
     const slide = pptx.addSlide();
     slide.background = { color: LIGHT };
-    slide.addText("מקורות", {
-      x: 0.5, y: 0.35, w: W - 1.0, h: 0.9, fontSize: 24, bold: true, color: BLUE, valign: "top", ...RTL,
-    });
+    addStripe(pptx, slide);
+    addHeader(pptx, slide, "מקורות");
     const items = sources.slice(0, 12).map((s) => ({
       text: `${s.source} · עמוד ${s.page_number}`,
-      options: { bullet: { indent: 18 }, breakLine: true, ...RTL },
+      options: { bullet: { indent: 20 }, breakLine: true, paraSpaceAfter: 6, ...RTL },
     }));
     slide.addText(items, {
-      x: 0.6, y: 1.5, w: W - 1.2, h: 5.4, fontSize: 16, color: NAVY, valign: "top", lineSpacingMultiple: 1.2,
+      x: 0.6, y: 1.35, w: W - STRIPE - 1.0, h: 5.4, fontSize: 15, color: NAVY, valign: "top", lineSpacingMultiple: 1.2,
     });
+    addFooter(pptx, slide, total, total);
   }
 
   await pptx.writeFile({ fileName: `${safeFileName(titleText)}.pptx` });

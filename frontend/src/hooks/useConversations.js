@@ -77,7 +77,7 @@ export function useConversations(corpusId) {
   // formatting instruction. For template buttons the bubble shows a short label
   // ("🗂️ כרטיסיות: <נושא>") while the topic is searched and the directive shapes
   // the format — kept apart so search matches the topic, not the boilerplate.
-  async function sendQuestion(displayText, questionText, directive = "", comprehensive = false, books = []) {
+  async function sendQuestion(displayText, questionText, directive = "", comprehensive = false, books = [], templateId = null) {
     const shown = (displayText || "").trim();
     const question = (questionText ?? displayText ?? "").trim();
     if (!shown || loading || !active) return;
@@ -102,9 +102,11 @@ export function useConversations(corpusId) {
         messages: [
           ...c.messages,
           // Keep the question + its book scope on the bot turn too, so "save as
-          // file" can include both.
+          // file" can include both. `template` marks which preset produced it
+          // (e.g. "presentation") so the UI can offer the right export.
           { role: "bot", text: data.answer, sources: data.sources,
-            wholeBook: data.whole_book, question: shown, books: scopedBooks },
+            wholeBook: data.whole_book, question: shown, books: scopedBooks,
+            template: templateId },
         ],
         updatedAt: Date.now(),
       }));

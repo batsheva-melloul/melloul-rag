@@ -51,6 +51,9 @@ function MessageBubble({ message }) {
   const contentRef = useRef(null);
   const hasSources = !isUser && message.sources && message.sources.length > 0;
   const scopedBooks = isUser && message.books ? message.books : [];
+  // The PowerPoint export is offered only for answers made by the "מצגת" template,
+  // which produces slide-ready content (short titles + bullets) that converts well.
+  const canPptx = hasSources && message.template === "presentation";
 
   return (
     <div className={`message-row ${isUser ? "user" : "bot"}`}>
@@ -100,21 +103,23 @@ function MessageBubble({ message }) {
             >
               ⬇ שמור כקובץ
             </button>
-            <button
-              type="button"
-              className="save-button"
-              onClick={() =>
-                downloadPptx({
-                  question: message.question,
-                  rawText: message.text,
-                  books: message.books,
-                  sources: message.sources,
-                })
-              }
-              title="הורד את התשובה כמצגת PowerPoint"
-            >
-              📊 הורד כמצגת
-            </button>
+            {canPptx && (
+              <button
+                type="button"
+                className="save-button"
+                onClick={() =>
+                  downloadPptx({
+                    question: message.question,
+                    rawText: message.text,
+                    books: message.books,
+                    sources: message.sources,
+                  })
+                }
+                title="הורד את התשובה כמצגת PowerPoint"
+              >
+                📊 הורד כמצגת
+              </button>
+            )}
           </div>
         )}
       </div>
