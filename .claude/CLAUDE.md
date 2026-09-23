@@ -93,5 +93,5 @@ npm run dev          # opens http://localhost:5173
 2. ✅ Real vector store (Chroma) — done
 3. ⬜ Pull documents from SharePoint via Microsoft Graph
 4. ✅ React chat UI + FastAPI backend — done
-5. ⬜ Entra ID SSO (internal only)
+5. ✅ Entra ID SSO (internal only) — done; see `design/auth-flow.md`
 6. ⬜ Cloud deployment

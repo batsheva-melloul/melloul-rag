@@ -16,8 +16,14 @@ frontend/
     ├── index.css           # All styling (modern glassmorphism, RTL, animations)
     ├── api/
     │   └── chatApi.js      # The single place that talks to the backend (fetch /ask)
+    ├── auth/
+    │   ├── msalConfig.js       # Entra app IDs + scopes (not secrets)
+    │   ├── getToken.js         # The ONLY place that acquires an API token (silent -> redirect, never popup)
+    │   └── pendingQuestion.js  # Parks a question across a sign-in redirect so it is resent automatically
     ├── hooks/
-    │   └── useConversations.js  # All conversations, active one, send logic, localStorage persistence
+    │   ├── useConversations.js  # All conversations, active one, send logic, localStorage persistence
+    │   ├── useCorpora.js        # Loads /corpora, tracks the selected chatbot
+    │   └── useBooks.js          # Loads /books for the selected corpus
     └── components/
         ├── Sidebar.jsx         # "New conversation" button + conversation list
         ├── ConversationItem.jsx# One row in the conversation list (title + delete)
@@ -35,6 +41,13 @@ frontend/
 Conversations are saved in the browser's `localStorage` (key `rag_conversations`) by
 `useConversations.js` — they survive refresh and browser restart, per-browser. This is the
 interim solution; server-side persistent history will come with Entra ID + cloud (Phase 5/6).
+
+## Sign-in & tokens
+
+Microsoft Entra ID via MSAL (`@azure/msal-browser` + `@azure/msal-react`). All token
+acquisition goes through `auth/getToken.js`; never call `acquireToken*` elsewhere and
+never use popups (they broke on the corporate network). Full description, recovery
+logic and test recipes: `../design/auth-flow.md`.
 
 ## Architecture principle
 

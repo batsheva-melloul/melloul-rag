@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { askQuestion } from "../api/chatApi";
-import { getAccessToken } from "../auth/getToken";
+import { getAccessToken, RedirectingError } from "../auth/getToken";
+import { savePendingQuestion, takePendingQuestion } from "../auth/pendingQuestion";
 
 // Conversations are persisted in the browser's localStorage. Each conversation
 // is tagged with the corpus (chatbot) it belongs to.
@@ -92,12 +93,25 @@ export function useConversations(corpusId) {
       messages: [...c.messages, { role: "user", text: shown, books: scopedBooks }],
       updatedAt: Date.now(),
     }));
-    setLoading(true);
 
+    await runQuestion(
+      { conversationId: active.id, corpusId, shown, question, directive, comprehensive, books: scopedBooks, templateId },
+      history
+    );
+  }
+
+  // Fetch the answer for a question whose user bubble is already in the
+  // conversation, and append the bot turn. Shared by sendQuestion and by the
+  // resume-after-sign-in path below.
+  async function runQuestion(q, history) {
+    const applyTo = (updater) =>
+      setConversations((prev) => prev.map((c) => (c.id === q.conversationId ? updater(c) : c)));
+
+    setLoading(true);
     try {
       const token = await getAccessToken(instance, accounts);
-      const data = await askQuestion(question, history, token, corpusId, directive, comprehensive, books);
-      updateActive((c) => ({
+      const data = await askQuestion(q.question, history, token, q.corpusId, q.directive, q.comprehensive, q.books);
+      applyTo((c) => ({
         ...c,
         messages: [
           ...c.messages,
@@ -105,13 +119,19 @@ export function useConversations(corpusId) {
           // file" can include both. `template` marks which preset produced it
           // (e.g. "presentation") so the UI can offer the right export.
           { role: "bot", text: data.answer, sources: data.sources,
-            wholeBook: data.whole_book, question: shown, books: scopedBooks,
-            template: templateId },
+            wholeBook: data.whole_book, question: q.shown, books: q.books,
+            template: q.templateId },
         ],
         updatedAt: Date.now(),
       }));
     } catch (error) {
-      updateActive((c) => ({
+      if (error instanceof RedirectingError) {
+        // The sign-in expired and the page is about to navigate to Microsoft.
+        // Park the question so it is sent automatically when we are back.
+        savePendingQuestion(q);
+        return; // no error bubble: the page unloads in a moment
+      }
+      applyTo((c) => ({
         ...c,
         messages: [
           ...c.messages,
@@ -122,6 +142,26 @@ export function useConversations(corpusId) {
       setLoading(false);
     }
   }
+
+  // After a sign-in redirect: if a question was parked before we left, open
+  // its conversation and send it now. Runs once, when the corpus is known.
+  useEffect(() => {
+    if (!corpusId) return;
+    const pending = takePendingQuestion();
+    if (!pending) return;
+    const conversation = conversations.find((c) => c.id === pending.conversationId);
+    if (!conversation) return;
+    setActiveId(conversation.id);
+    // The user bubble was already appended before the redirect, so the
+    // history the model sees must stop just before it.
+    const last = conversation.messages[conversation.messages.length - 1];
+    const history =
+      last && last.role === "user" && last.text === pending.shown
+        ? conversation.messages.slice(0, -1)
+        : conversation.messages;
+    runQuestion(pending, history);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [corpusId]);
 
   function newConversation() {
     const empty = conversations.find(

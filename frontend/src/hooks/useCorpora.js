@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { fetchCorpora } from "../api/chatApi";
 import { getAccessToken } from "../auth/getToken";
+import { peekPendingQuestion } from "../auth/pendingQuestion";
 
 /**
  * Loads the list of chatbots/corpora from the backend and tracks which one
@@ -20,8 +21,12 @@ export function useCorpora() {
         const list = await fetchCorpora(token);
         if (cancelled) return;
         setCorpora(list);
-        // Default to the first corpus.
-        setSelectedId((prev) => prev || (list[0] && list[0].id) || null);
+        // Default to the corpus of a question parked across a sign-in
+        // redirect (so it can be resent there), otherwise the first corpus.
+        const pending = peekPendingQuestion();
+        const pendingCorpus =
+          pending && list.some((c) => c.id === pending.corpusId) ? pending.corpusId : null;
+        setSelectedId((prev) => prev || pendingCorpus || (list[0] && list[0].id) || null);
       } catch (error) {
         // Leave the list empty; the UI shows nothing to pick.
       }
