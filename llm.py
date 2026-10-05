@@ -14,6 +14,7 @@ A Provider exposes two operations:
 Each provider translates that into its own format internally.
 """
 
+import json
 import os
 import time
 import logging
@@ -73,6 +74,14 @@ class LLMProvider(ABC):
     @abstractmethod
     def generate(self, system: str, messages: list[dict]) -> str:
         """Return the model's answer given a system prompt and chat messages."""
+
+    def generate_stream(self, system: str, messages: list[dict]):
+        """
+        Yield the model's answer piece by piece (str chunks) as it is produced.
+        Default: no real streaming — yield the whole answer at once. Providers
+        that support token streaming override this.
+        """
+        yield self.generate(system, messages)
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +171,42 @@ class GeminiProvider(LLMProvider):
                     raise
         return "Sorry, the model is currently unavailable. Please try again later."
 
+    def generate_stream(self, system: str, messages: list[dict]):
+        contents = [
+            {
+                "role": "user" if m["role"] == "user" else "model",
+                "parts": [{"text": m["text"]}],
+            }
+            for m in messages
+        ]
+        config = self._genai.types.GenerateContentConfig(system_instruction=system)
+        # Retries cover only the START of the stream; once text is flowing an error
+        # is raised to the caller (it already has a partial answer on screen).
+        max_attempts = 5
+        for attempt in range(1, max_attempts + 1):
+            try:
+                stream = self._client.models.generate_content_stream(
+                    model=self.chat_model, contents=contents, config=config,
+                )
+                for chunk in stream:
+                    if chunk.text:
+                        yield chunk.text
+                return
+            except (self._genai.errors.ServerError,
+                    self._genai.errors.ClientError) as error:
+                if error.code == 429 and _is_daily_quota_error(error):
+                    raise RuntimeError(
+                        "Gemini daily quota exhausted (free tier). Try again "
+                        "tomorrow or move to a paid tier."
+                    ) from error
+                if error.code in (429, 503) and attempt < max_attempts:
+                    wait = 10 * attempt
+                    logger.warning("Model busy (%s); retry %d/%d in %ds",
+                                   error.code, attempt, max_attempts, wait)
+                    time.sleep(wait)
+                else:
+                    raise
+
 
 # ---------------------------------------------------------------------------
 # Azure OpenAI provider
@@ -250,16 +295,7 @@ class AzureOpenAIProvider(LLMProvider):
 
     def generate(self, system: str, messages: list[dict]) -> str:
         # Neutral messages -> OpenAI chat format (system first, then the turns).
-        contents = [{"role": "system", "content": system}]
-        for m in messages:
-            role = "assistant" if m["role"] == "assistant" else "user"
-            contents.append({"role": role, "content": m["text"]})
-
-        body = {
-            "messages": contents,
-            "max_completion_tokens": self.MAX_COMPLETION_TOKENS,
-            # NOTE: gpt-5 accepts only the default temperature — do NOT send one.
-        }
+        body = self._chat_body(system, messages)
         data = self._post(self.chat_deployment, "chat/completions", body)
         choice = data["choices"][0]
         content = choice["message"].get("content")
@@ -271,6 +307,82 @@ class AzureOpenAIProvider(LLMProvider):
                 "entire max_completion_tokens budget", choice.get("finish_reason"),
             )
         return content or ""
+
+    def _chat_body(self, system: str, messages: list[dict]) -> dict:
+        contents = [{"role": "system", "content": system}]
+        for m in messages:
+            role = "assistant" if m["role"] == "assistant" else "user"
+            contents.append({"role": role, "content": m["text"]})
+        return {
+            "messages": contents,
+            "max_completion_tokens": self.MAX_COMPLETION_TOKENS,
+            # NOTE: gpt-5 accepts only the default temperature — do NOT send one.
+        }
+
+    def generate_stream(self, system: str, messages: list[dict]):
+        """
+        Stream the answer as it is generated. Azure sends Server-Sent Events:
+        lines of `data: {json}` with a delta per line, ending in `data: [DONE]`.
+        Retries (429/503/network) cover only the START of the stream; once text
+        is flowing an error propagates to the caller, which already has a
+        partial answer on screen.
+        """
+        body = {**self._chat_body(system, messages), "stream": True}
+        headers = {"api-key": self.api_key, "Content-Type": "application/json"}
+        url = self._url(self.chat_deployment, "chat/completions")
+        max_attempts = 5
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with self._client.stream("POST", url, headers=headers, json=body) as response:
+                    if response.status_code in (429, 503) and attempt < max_attempts:
+                        response.read()
+                        wait = 10 * attempt
+                        logger.warning("Azure busy (%s); retry %d/%d in %ds",
+                                       response.status_code, attempt, max_attempts, wait)
+                        time.sleep(wait)
+                        continue
+                    if response.status_code != 200:
+                        response.read()
+                        raise RuntimeError(
+                            f"Azure OpenAI chat/completions failed "
+                            f"(HTTP {response.status_code}): {response.text[:300]}"
+                        )
+                    produced = False
+                    finish_reason = None
+                    for line in response.iter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            event = json.loads(payload)
+                        except ValueError:
+                            continue
+                        for choice in event.get("choices") or []:
+                            finish_reason = choice.get("finish_reason") or finish_reason
+                            text = (choice.get("delta") or {}).get("content")
+                            if text:
+                                produced = True
+                                yield text
+                    if not produced:
+                        logger.warning(
+                            "Empty streamed completion (finish_reason=%s) — reasoning "
+                            "may have used the entire max_completion_tokens budget",
+                            finish_reason,
+                        )
+                    return
+            except self._httpx.TransportError as error:
+                if attempt < max_attempts:
+                    wait = 10 * attempt
+                    logger.warning("Azure network error (%s); retry %d/%d in %ds",
+                                   type(error).__name__, attempt, max_attempts, wait)
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(
+                    f"Azure OpenAI chat/completions failed after network errors: {error}"
+                ) from error
+        raise RuntimeError("Azure OpenAI chat/completions failed after retries.")
 
 
 # ---------------------------------------------------------------------------

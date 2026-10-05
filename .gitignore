@@ -16,3 +16,6 @@ frontend/dist/
 node_modules/
 # local machine-specific Claude settings
 .claude/settings.local.json
+
+# local SQLite history store (dev fallback when DATABASE_URL is unset)
+data/

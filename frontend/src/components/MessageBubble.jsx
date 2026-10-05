@@ -45,6 +45,10 @@ function Pre({ children }) {
 }
 
 const MARKDOWN_COMPONENTS = { pre: Pre };
+// While an answer is still streaming, fenced blocks are usually half-written,
+// so the interactive renderers (quiz, slides...) would try to parse broken
+// input. Render plain Markdown until the stream ends, then switch over.
+const STREAMING_COMPONENTS = {};
 
 // A book filename shown as a chip without its ".pdf" extension.
 function bookLabel(name) {
@@ -78,13 +82,21 @@ function MessageBubble({ message }) {
             )}
           </>
         ) : (
-          <div className="bubble-text markdown" ref={contentRef}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+          <div
+            className={`bubble-text markdown${message.streaming ? " streaming" : ""}`}
+            ref={contentRef}
+          >
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={message.streaming ? STREAMING_COMPONENTS : MARKDOWN_COMPONENTS}
+            >
               {message.text}
             </ReactMarkdown>
           </div>
         )}
-        {!isUser && <SourceTags sources={message.sources} answer={message.text} />}
+        {!isUser && !message.streaming && (
+          <SourceTags sources={message.sources} answer={message.text} />
+        )}
         {message.wholeBook && (
           <div className="wholebook-note">
             📚 התשובה מבוססת על כל הספר — כאן מוצגים מקורות מייצגים בלבד.

@@ -185,6 +185,31 @@ def sync_corpus(hostname: str, corpus: dict, engine: RagEngine) -> dict:
     return summary
 
 
+def sync_corpus_recorded(hostname: str, corpus: dict, engine: RagEngine,
+                         history, trigger_by: str) -> dict:
+    """
+    sync_corpus + a row in the `sync_runs` table (started / finished / counts /
+    error), so the admin page can show "last sync" per corpus whether the sync
+    was started from the CLI or from the admin page. `history` may be None
+    (no database configured) — then it is a plain sync_corpus.
+    """
+    run_id = None
+    if history is not None:
+        try:
+            run_id = history.start_sync_run(corpus["id"], trigger_by)
+        except Exception:
+            logger.exception("could not record sync start")
+    try:
+        summary = sync_corpus(hostname, corpus, engine)
+    except Exception as error:
+        if run_id is not None:
+            history.finish_sync_run(run_id, status="error", error=f"{type(error).__name__}: {error}")
+        raise
+    if run_id is not None:
+        history.finish_sync_run(run_id, status="ok", **summary)
+    return summary
+
+
 def sync_all(only_corpus_id: str | None = None) -> dict:
     """
     Sync every configured corpus (or just one, if only_corpus_id is given).
@@ -206,10 +231,18 @@ def sync_all(only_corpus_id: str | None = None) -> dict:
     else:
         corpora = all_corpora()
 
+    # Record each run in the database (if one is configured) for the admin page.
+    history = None
+    try:
+        from history_store import HistoryStore
+        history = HistoryStore()
+    except Exception as error:
+        logger.warning("sync runs will not be recorded (%s)", error)
+
     results = {}
     for corpus in corpora:
         engine = RagEngine(corpus["id"])
-        results[corpus["id"]] = sync_corpus(hostname, corpus, engine)
+        results[corpus["id"]] = sync_corpus_recorded(hostname, corpus, engine, history, "cli")
 
     logger.info("All corpora done: %s", results)
     return results

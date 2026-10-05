@@ -21,8 +21,9 @@ RAG/
 ├── llm.py             # LLM provider abstraction — ONLY file that imports a vendor SDK
 ├── rag_core.py        # Core RAG logic (PDF → chunks → embeddings → Chroma → answer)
 ├── rag_pipeline.py    # Command-line interface (interactive Q&A loop)
+├── history_store.py   # Conversations, question log, sync runs (Postgres or SQLite)
 ├── backend/
-│   ├── main.py        # FastAPI server exposing the /ask endpoint
+│   ├── main.py        # FastAPI: /ask, /ask/stream, /conversations, /admin/*
 │   └── auth.py        # Entra JWT validation (Depends(verify_token))
 ├── frontend/          # React (plain JS) chat UI, with MSAL sign-in
 ├── docs/              # Local PDF documents (input)
@@ -49,6 +50,7 @@ pip install -r requirements.txt
 Create a `.env` file with:
 ```
 GEMINI_API_KEY=your_key_here
+ADMIN_USERS=you@company.com        # who may open the admin page (comma-separated)
 ```
 
 ## Running
@@ -84,6 +86,9 @@ npm run dev          # opens http://localhost:5173
 - **Gemini free-tier limits:** embeddings are rate-limited (~100/min) and have a daily
   cap. The code batches embeddings (100/request) and retries on 429/503. A document is
   embedded only once — Chroma caches it by a content hash, so re-runs make no API calls.
+- **Azure App Service buffers streamed responses** unless the content type is
+  `text/event-stream`. `/ask/stream` therefore speaks SSE; do not change it to
+  NDJSON/plain text (measured with `GET /health/stream?fmt=...`).
 - **OCR:** `pypdf` only reads a real text layer. Scanned/image-only PDFs yield 0 text and
   are rejected. Use PDFs that already contain extractable text.
 
@@ -91,7 +96,7 @@ npm run dev          # opens http://localhost:5173
 
 1. ✅ Local MVP (single script, in-memory) — done
 2. ✅ Real vector store (Chroma) — done
-3. ⬜ Pull documents from SharePoint via Microsoft Graph
+3. ✅ Pull documents from SharePoint via Microsoft Graph — done (`sharepoint.py`, run manually)
 4. ✅ React chat UI + FastAPI backend — done
 5. ✅ Entra ID SSO (internal only) — done; see `design/auth-flow.md`
-6. ⬜ Cloud deployment
+6. ✅ Cloud deployment — done (Azure App Service, single service serving API + `frontend/dist`)

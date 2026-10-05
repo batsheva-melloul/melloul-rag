@@ -7,7 +7,7 @@ import ConfirmDialog from "./ConfirmDialog";
 // The top bar of the chat: title, the signed-in user's name, a theme toggle,
 // and a logout button.
 
-function ChatHeader({ corpusName }) {
+function ChatHeader({ corpusName, isAdmin = false, view = "chat", onToggleAdmin }) {
   const { instance, accounts, inProgress } = useMsal();
   const { theme, toggleTheme } = useTheme();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
@@ -34,6 +34,15 @@ function ChatHeader({ corpusName }) {
         <h1>עוזר החברה</h1>
         <p>{subtitle}</p>
       </div>
+      {isAdmin && onToggleAdmin && (
+        <button
+          className="admin-toggle"
+          onClick={onToggleAdmin}
+          title={view === "admin" ? "חזרה לצ'אט" : "דף ניהול"}
+        >
+          {view === "admin" ? "💬 לצ'אט" : "⚙️ ניהול"}
+        </button>
+      )}
       <button
         className="theme-toggle"
         onClick={toggleTheme}

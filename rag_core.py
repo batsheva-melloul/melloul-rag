@@ -669,20 +669,17 @@ class RagEngine:
         """Index a PDF from in-memory bytes (no file saved to disk)."""
         return index_pdf_bytes(self.store, self.llm, source, version, data)
 
-    def answer(self, question: str, history: list[dict] | None = None,
-               directive: str = "", comprehensive: bool = False,
-               books: list[str] | None = None) -> dict:
+    def _prepare(self, question: str, history: list[dict] | None,
+                 directive: str, comprehensive: bool,
+                 books: list[str] | None) -> dict:
         """
-        Answer a question grounded in the documents, with conversation memory.
-        history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
-        `directive` (optional) is a template's formatting instruction — kept OUT of
-        retrieval so search matches the topic, not the boilerplate.
-        `comprehensive` (template requests): if the query names a specific book, read a
-        wide sample across the WHOLE book so the output covers all of it.
-        `books` (optional): exact source filenames picked in the UI's book-picker —
-        when non-empty, retrieval is confined to those book(s) (whole-book if
-        comprehensive, otherwise the most relevant passages within them).
-        Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
+        Everything that happens BEFORE the model is called: query rewrite,
+        retrieval (scoped / whole-book / top-K) and prompt assembly. Shared by
+        `answer` (one-shot) and `answer_stream` (token streaming) so the two can
+        never drift apart in grounding behaviour.
+        Returns {"messages": list | None, "chunks": list, "whole_book": bool}.
+        messages is None when there is no context — the caller must NOT call the
+        model in that case (strict grounding).
         """
         history = history or []
 
@@ -722,20 +719,74 @@ class RagEngine:
         # Safety guard: if there is no context, never call the model —
         # otherwise it might answer from its own outside knowledge.
         if not context_block.strip():
-            return {"answer": NO_INFO_MESSAGE, "sources": [], "whole_book": False}
+            return {"messages": None, "chunks": [], "whole_book": False}
 
         messages = build_messages(question, context_block, history, directive)
-        answer_text = self.llm.generate(SYSTEM_PROMPT, messages)
+        return {"messages": messages, "chunks": top_chunks, "whole_book": whole_book}
+
+    # Shown when the model returned nothing usable (e.g. reasoning consumed the
+    # whole token budget) — friendlier than an empty bubble.
+    EMPTY_ANSWER_MESSAGE = "מצטער, לא הצלחתי לנסח תשובה לשאלה הזו. נסו לנסח אותה מעט אחרת."
+
+    def answer(self, question: str, history: list[dict] | None = None,
+               directive: str = "", comprehensive: bool = False,
+               books: list[str] | None = None) -> dict:
+        """
+        Answer a question grounded in the documents, with conversation memory.
+        history is the prior turns: [{"role": "user" | "bot", "text": str}, ...].
+        `directive` (optional) is a template's formatting instruction — kept OUT of
+        retrieval so search matches the topic, not the boilerplate.
+        `comprehensive` (template requests): if the query names a specific book, read a
+        wide sample across the WHOLE book so the output covers all of it.
+        `books` (optional): exact source filenames picked in the UI's book-picker —
+        when non-empty, retrieval is confined to those book(s) (whole-book if
+        comprehensive, otherwise the most relevant passages within them).
+        Returns {"answer": str, "sources": [{"source": str, "page_number": int, "text": str}]}.
+        """
+        prep = self._prepare(question, history, directive, comprehensive, books)
+        if prep["messages"] is None:
+            return {"answer": NO_INFO_MESSAGE, "sources": [], "whole_book": False}
+
+        answer_text = self.llm.generate(SYSTEM_PROMPT, prep["messages"])
         if not answer_text.strip():
-            # Model returned nothing usable (e.g. reasoning consumed the whole token
-            # budget) — show a friendly message instead of an empty bubble.
-            answer_text = "מצטער, לא הצלחתי לנסח תשובה לשאלה הזו. נסו לנסח אותה מעט אחרת."
+            answer_text = self.EMPTY_ANSWER_MESSAGE
         # Whole-book mode gathers many chunks from one book — show at most ~10 sources,
         # and flag it so the UI can note the answer covers the whole book.
         return {
             "answer": answer_text,
-            "sources": _sample_evenly(top_chunks, 10),
-            "whole_book": whole_book,
+            "sources": _sample_evenly(prep["chunks"], 10),
+            "whole_book": prep["whole_book"],
+        }
+
+    def answer_stream(self, question: str, history: list[dict] | None = None,
+                      directive: str = "", comprehensive: bool = False,
+                      books: list[str] | None = None):
+        """
+        Same as `answer`, but a generator that yields events as the answer is
+        produced, so the UI can show text while the model is still writing:
+            {"type": "delta", "text": str}                       # a piece of the answer
+            {"type": "done", "sources": [...], "whole_book": bool}  # always last
+        Grounding rules are identical to `answer` (shared `_prepare`): with no
+        retrieved context the model is never called and the "no info" message
+        is streamed as a single delta.
+        """
+        prep = self._prepare(question, history, directive, comprehensive, books)
+        if prep["messages"] is None:
+            yield {"type": "delta", "text": NO_INFO_MESSAGE}
+            yield {"type": "done", "sources": [], "whole_book": False}
+            return
+
+        produced = False
+        for piece in self.llm.generate_stream(SYSTEM_PROMPT, prep["messages"]):
+            if piece:
+                produced = produced or bool(piece.strip())
+                yield {"type": "delta", "text": piece}
+        if not produced:
+            yield {"type": "delta", "text": self.EMPTY_ANSWER_MESSAGE}
+        yield {
+            "type": "done",
+            "sources": _sample_evenly(prep["chunks"], 10),
+            "whole_book": prep["whole_book"],
         }
 
 

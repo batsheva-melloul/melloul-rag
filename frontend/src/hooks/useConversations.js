@@ -1,12 +1,33 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
-import { askQuestion } from "../api/chatApi";
+import {
+  askQuestionStream,
+  fetchConversations,
+  saveConversation,
+  deleteConversationRemote,
+} from "../api/chatApi";
 import { getAccessToken, RedirectingError } from "../auth/getToken";
 import { savePendingQuestion, takePendingQuestion } from "../auth/pendingQuestion";
 
-// Conversations are persisted in the browser's localStorage. Each conversation
-// is tagged with the corpus (chatbot) it belongs to.
+// Conversations live on the SERVER (per signed-in user, see /conversations), so
+// the same history appears on every device. localStorage keeps a copy as a
+// cache: it renders instantly on load and still works if the server is briefly
+// unreachable. Each conversation is tagged with the corpus it belongs to.
 const STORAGE_KEY = "rag_conversations";
+// How long to wait after the last change before writing it to the server.
+const SAVE_DEBOUNCE_MS = 1200;
+
+// Merge the cached and the server copies: every id from both sides, and where
+// both have one, the more recently updated wins.
+function mergeConversations(local, remote) {
+  const byId = new Map();
+  for (const c of remote) byId.set(c.id, c);
+  for (const c of local) {
+    const r = byId.get(c.id);
+    if (!r || (c.updatedAt || 0) > (r.updatedAt || 0)) byId.set(c.id, c);
+  }
+  return [...byId.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
 
 function loadConversations() {
   try {
@@ -42,9 +63,82 @@ export function useConversations(corpusId) {
   const [activeId, setActiveId] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Persist on every change.
+  // Persist the cache on every change.
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+  }, [conversations]);
+
+  // --- Server sync -----------------------------------------------------------
+  // loadedRef: the server copy has been merged in (saves are allowed from then
+  // on, so a stale cache can never overwrite newer server data).
+  // savedRef: per conversation, the JSON we last sent, to detect real changes.
+  const loadedRef = useRef(false);
+  const savedRef = useRef(new Map());
+  const saveTimerRef = useRef(null);
+
+  // On startup: fetch this user's conversations and merge them with the cache.
+  // Cached conversations the server has never seen (from before server-side
+  // history existed) are uploaded once, so nothing is lost in the migration.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken(instance, accounts);
+        const remote = await fetchConversations(token);
+        if (cancelled) return;
+        const remoteIds = new Set(remote.map((c) => c.id));
+        for (const c of remote) savedRef.current.set(c.id, JSON.stringify(c));
+        setConversations((local) => {
+          const merged = mergeConversations(local, remote);
+          for (const c of local) {
+            if (!remoteIds.has(c.id) && c.messages.length > 0) {
+              saveConversation(c, token).then(
+                () => savedRef.current.set(c.id, JSON.stringify(c)),
+                () => {}
+              );
+            }
+          }
+          return merged;
+        });
+      } catch {
+        // Offline / sign-in redirect in progress: keep working from the cache.
+        // Saves are still enabled below, so a temporary server hiccup does not
+        // silently stop history from syncing once the server is back.
+      } finally {
+        if (!cancelled) loadedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // After every change: write conversations that actually changed, debounced.
+  // Empty conversations and ones with an answer still streaming are skipped.
+  useEffect(() => {
+    if (!loadedRef.current) return undefined;
+    const dirty = conversations.filter((c) => {
+      if (c.messages.length === 0) return false;
+      if (c.messages[c.messages.length - 1]?.streaming) return false;
+      return savedRef.current.get(c.id) !== JSON.stringify(c);
+    });
+    if (dirty.length === 0) return undefined;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        const token = await getAccessToken(instance, accounts);
+        for (const c of dirty) {
+          const snapshot = JSON.stringify(c);
+          await saveConversation(c, token);
+          savedRef.current.set(c.id, snapshot);
+        }
+      } catch {
+        // Will retry on the next change; the cache still has everything.
+      }
+    }, SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(saveTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations]);
 
   // Make sure there is an active conversation belonging to the current corpus.
@@ -103,40 +197,91 @@ export function useConversations(corpusId) {
   // Fetch the answer for a question whose user bubble is already in the
   // conversation, and append the bot turn. Shared by sendQuestion and by the
   // resume-after-sign-in path below.
+  //
+  // The answer is STREAMED: as soon as the first piece of text arrives we add a
+  // bot bubble flagged `streaming: true` and keep replacing its text, so the
+  // user reads the answer while the model is still writing. When the stream
+  // ends the bubble gets its sources and the flag is cleared.
   async function runQuestion(q, history) {
     const applyTo = (updater) =>
       setConversations((prev) => prev.map((c) => (c.id === q.conversationId ? updater(c) : c)));
 
+    // Identifies the live bubble inside the conversation while it streams.
+    const streamId = makeId();
+    let started = false;
+
+    // Replace the streaming bubble's text. Updates are coalesced to one per
+    // animation frame: tokens can arrive far faster than Markdown re-renders.
+    let pendingText = null;
+    let frame = null;
+    const flush = () => {
+      frame = null;
+      if (pendingText === null) return;
+      const text = pendingText;
+      pendingText = null;
+      applyTo((c) => ({
+        ...c,
+        messages: c.messages.map((m) => (m.streamId === streamId ? { ...m, text } : m)),
+      }));
+    };
+    const onDelta = (text) => {
+      if (!started) {
+        started = true;
+        applyTo((c) => ({
+          ...c,
+          messages: [
+            ...c.messages,
+            { role: "bot", text, sources: [], streaming: true, streamId,
+              question: q.shown, books: q.books, template: q.templateId },
+          ],
+        }));
+        return;
+      }
+      pendingText = text;
+      if (frame === null) frame = requestAnimationFrame(flush);
+    };
+
     setLoading(true);
     try {
       const token = await getAccessToken(instance, accounts);
-      const data = await askQuestion(q.question, history, token, q.corpusId, q.directive, q.comprehensive, q.books);
+      const data = await askQuestionStream(
+        { question: q.question, history, accessToken: token, corpusId: q.corpusId,
+          directive: q.directive, comprehensive: q.comprehensive, books: q.books },
+        onDelta
+      );
+      if (frame !== null) cancelAnimationFrame(frame);
+      pendingText = null;
+      // Final bot turn. Keep the question + its book scope on it too, so "save
+      // as file" can include both. `template` marks which preset produced it
+      // (e.g. "presentation") so the UI can offer the right export.
+      const finalMessage = {
+        role: "bot", text: data.answer, sources: data.sources,
+        wholeBook: data.whole_book, question: q.shown, books: q.books,
+        template: q.templateId,
+      };
       applyTo((c) => ({
         ...c,
-        messages: [
-          ...c.messages,
-          // Keep the question + its book scope on the bot turn too, so "save as
-          // file" can include both. `template` marks which preset produced it
-          // (e.g. "presentation") so the UI can offer the right export.
-          { role: "bot", text: data.answer, sources: data.sources,
-            wholeBook: data.whole_book, question: q.shown, books: q.books,
-            template: q.templateId },
-        ],
+        messages: started
+          ? c.messages.map((m) => (m.streamId === streamId ? finalMessage : m))
+          : [...c.messages, finalMessage],
         updatedAt: Date.now(),
       }));
     } catch (error) {
+      if (frame !== null) cancelAnimationFrame(frame);
+      pendingText = null;
       if (error instanceof RedirectingError) {
         // The sign-in expired and the page is about to navigate to Microsoft.
         // Park the question so it is sent automatically when we are back.
         savePendingQuestion(q);
         return; // no error bubble: the page unloads in a moment
       }
+      const errorMessage = { role: "bot", text: "אירעה שגיאה בחיבור לשרת. נסה שוב.", sources: [] };
       applyTo((c) => ({
         ...c,
-        messages: [
-          ...c.messages,
-          { role: "bot", text: "אירעה שגיאה בחיבור לשרת. נסה שוב.", sources: [] },
-        ],
+        // If some text already streamed in, keep it and append the error after it.
+        messages: started
+          ? [...c.messages.map((m) => (m.streamId === streamId ? { ...m, streaming: false } : m)), errorMessage]
+          : [...c.messages, errorMessage],
       }));
     } finally {
       setLoading(false);
@@ -183,6 +328,10 @@ export function useConversations(corpusId) {
   function deleteConversation(id) {
     const remaining = conversations.filter((c) => c.id !== id);
     setConversations(remaining);
+    savedRef.current.delete(id);
+    getAccessToken(instance, accounts)
+      .then((token) => deleteConversationRemote(id, token))
+      .catch(() => {});
     if (id === activeId) {
       const next = remaining.find((c) => c.corpusId === corpusId);
       setActiveId(next ? next.id : null); // the effect re-creates one if needed

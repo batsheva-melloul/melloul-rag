@@ -21,7 +21,8 @@ function MessageList({ messages, loading }) {
         <MessageBubble key={index} message={message} />
       ))}
 
-      {loading && <TypingIndicator />}
+      {/* The "..." indicator shows only until the answer starts streaming in. */}
+      {loading && !messages[messages.length - 1]?.streaming && <TypingIndicator />}
 
       <div ref={bottomRef} />
     </div>

@@ -21,13 +21,15 @@ frontend/
     │   ├── getToken.js         # The ONLY place that acquires an API token (silent -> redirect, never popup)
     │   └── pendingQuestion.js  # Parks a question across a sign-in redirect so it is resent automatically
     ├── hooks/
-    │   ├── useConversations.js  # All conversations, active one, send logic, localStorage persistence
+    │   ├── useConversations.js  # All conversations, send logic, SERVER sync (+ localStorage cache)
     │   ├── useCorpora.js        # Loads /corpora, tracks the selected chatbot
-    │   └── useBooks.js          # Loads /books for the selected corpus
+    │   ├── useBooks.js          # Loads /books for the selected corpus
+    │   └── useMe.js             # GET /me: name, email, isAdmin (shows the admin button)
     └── components/
         ├── Sidebar.jsx         # "New conversation" button + conversation list
         ├── ConversationItem.jsx# One row in the conversation list (title + delete)
-        ├── ChatHeader.jsx      # Top bar with title + avatar
+        ├── ChatHeader.jsx      # Top bar: title, admin toggle (admins only), theme, logout
+        ├── AdminPanel.jsx      # Admin page: KPI tiles, corpora + "sync now", question log
         ├── MessageList.jsx     # Scrollable list + auto-scroll to newest
         ├── MessageBubble.jsx   # One message (avatar + bubble)
         ├── SourceTags.jsx      # Citation pills (📄 source · page N)
@@ -38,9 +40,18 @@ frontend/
 
 ## Conversation history
 
-Conversations are saved in the browser's `localStorage` (key `rag_conversations`) by
-`useConversations.js` — they survive refresh and browser restart, per-browser. This is the
-interim solution; server-side persistent history will come with Entra ID + cloud (Phase 5/6).
+Conversations live on the server, per signed-in user (`GET/PUT/DELETE /conversations`),
+so the same history shows on every device. `useConversations.js` keeps a copy in
+`localStorage` (key `rag_conversations`) as a cache: it renders instantly, then the
+server list is merged in (newer `updatedAt` wins; cached conversations the server has
+never seen are uploaded once). Changes are saved with a 1.2 s debounce; empty
+conversations and ones whose answer is still streaming are not saved yet.
+
+## Admin page
+
+`App.jsx` switches the body between the chat and `AdminPanel` when `useMe()` says the
+user is an admin (button in the header). The panel only reads `/admin/*`; the server
+decides who is an admin (see backend/CLAUDE.md, `ADMIN_USERS`).
 
 ## Sign-in & tokens
 
@@ -48,6 +59,17 @@ Microsoft Entra ID via MSAL (`@azure/msal-browser` + `@azure/msal-react`). All t
 acquisition goes through `auth/getToken.js`; never call `acquireToken*` elsewhere and
 never use popups (they broke on the corporate network). Full description, recovery
 logic and test recipes: `../design/auth-flow.md`.
+
+## Streaming answers
+
+`api/chatApi.js` -> `askQuestionStream` reads the SSE stream (`data: {json}` lines) from `POST /ask/stream`
+and calls `onDelta(textSoFar)` as pieces arrive. `useConversations.runQuestion` adds a
+bot bubble flagged `streaming: true` on the first delta, updates its text at most once
+per animation frame, and on the final `done` event replaces it with the complete
+message (sources, whole-book flag, template). While `streaming` is true,
+`MessageBubble` renders plain Markdown (no quiz/slides/flashcards parsing of
+half-written fences), hides the sources, and shows a blinking caret; `MessageList`
+hides the "..." indicator once text is flowing.
 
 ## Architecture principle
 
