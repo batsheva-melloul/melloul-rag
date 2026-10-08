@@ -27,6 +27,11 @@ import threading
 
 logger = logging.getLogger("rag.history")
 
+# A running sync proves its process is alive by updating heartbeat_at (see
+# sharepoint.sync_corpus_recorded). A run whose heartbeat is older than this
+# belongs to a process that died (deploy / restart / crash) and is closed out.
+STALE_SYNC_MS = 5 * 60 * 1000
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)
@@ -122,6 +127,7 @@ class HistoryStore:
                         trigger_by  text,          -- cli | admin:<user> | schedule
                         started_at  bigint NOT NULL,
                         finished_at bigint,
+                        heartbeat_at bigint,       -- last "still alive" tick of a running sync
                         status      text NOT NULL, -- running | ok | error
                         total       integer,
                         indexed     integer,
@@ -130,6 +136,12 @@ class HistoryStore:
                       )""")
         self._run("CREATE INDEX IF NOT EXISTS sync_runs_corpus "
                   "ON sync_runs (corpus_id, started_at)")
+        # Databases created before heartbeat_at existed: add the column. SQLite has
+        # no "ADD COLUMN IF NOT EXISTS", so a duplicate-column error means it is there.
+        try:
+            self._run("ALTER TABLE sync_runs ADD COLUMN heartbeat_at bigint")
+        except Exception:
+            pass
         # One row per schedule: which slot (scheduled time, epoch ms) was last
         # claimed. Lets several web workers agree on who runs the nightly sync.
         self._run("""CREATE TABLE IF NOT EXISTS sync_schedule (
@@ -279,15 +291,25 @@ class HistoryStore:
     # ------------------------------------------------------------ sync runs
 
     def start_sync_run(self, corpus_id: str, trigger_by: str) -> int:
+        now = now_ms()
         if self.backend == "postgres":
-            row = self._run("INSERT INTO sync_runs (corpus_id, trigger_by, started_at, status) "
-                            "VALUES (?, ?, ?, 'running') RETURNING id",
-                            (corpus_id, trigger_by, now_ms()), fetch="one")
+            row = self._run("INSERT INTO sync_runs (corpus_id, trigger_by, started_at, heartbeat_at, status) "
+                            "VALUES (?, ?, ?, ?, 'running') RETURNING id",
+                            (corpus_id, trigger_by, now, now), fetch="one")
             return int(row[0])
-        self._run("INSERT INTO sync_runs (corpus_id, trigger_by, started_at, status) "
-                  "VALUES (?, ?, ?, 'running')", (corpus_id, trigger_by, now_ms()))
+        self._run("INSERT INTO sync_runs (corpus_id, trigger_by, started_at, heartbeat_at, status) "
+                  "VALUES (?, ?, ?, ?, 'running')", (corpus_id, trigger_by, now, now))
         row = self._run("SELECT last_insert_rowid()", fetch="one")
         return int(row[0])
+
+    def heartbeat_sync_run(self, run_id: int) -> None:
+        """Called every minute while a sync runs: proves its process is still alive,
+        so another worker's startup never mistakes it for a dead run."""
+        try:
+            self._run("UPDATE sync_runs SET heartbeat_at = ? WHERE id = ? AND status = 'running'",
+                      (now_ms(), run_id))
+        except Exception:
+            logger.exception("sync heartbeat failed")
 
     def finish_sync_run(self, run_id: int, *, status: str, total: int = 0,
                         indexed: int = 0, skipped: int = 0, error: str | None = None) -> None:
@@ -297,6 +319,7 @@ class HistoryStore:
 
     def last_sync_runs(self) -> dict[str, dict]:
         """The most recent run per corpus, keyed by corpus id."""
+        self.abandon_running_syncs()  # a dead run must not show as "running" forever
         rows = self._run("SELECT corpus_id, trigger_by, started_at, finished_at, status, total, "
                          "indexed, skipped, error FROM sync_runs ORDER BY started_at DESC",
                          fetch="all") or []
@@ -310,6 +333,7 @@ class HistoryStore:
         return out
 
     def running_sync(self) -> dict | None:
+        self.abandon_running_syncs()  # ignore runs whose process has died
         r = self._run("SELECT id, corpus_id, trigger_by, started_at FROM sync_runs "
                       "WHERE status = 'running' ORDER BY started_at DESC LIMIT 1", fetch="one")
         if not r:
@@ -334,8 +358,14 @@ class HistoryStore:
         return bool(changed)
 
     def abandon_running_syncs(self) -> None:
-        """At startup: a run still marked 'running' belongs to a process that
-        died (deploy/restart). Mark it so the admin page is not stuck forever."""
+        """
+        Close out runs still marked 'running' whose heartbeat has stopped: their
+        process died (deploy / restart / crash). A sync that is alive in ANOTHER
+        worker keeps heartbeating and is left alone — so this is safe to call at
+        every worker's startup and before every status read.
+        """
+        now = now_ms()
         self._run("UPDATE sync_runs SET status = 'error', finished_at = ?, "
-                  "error = 'interrupted (server restarted)' WHERE status = 'running'",
-                  (now_ms(),))
+                  "error = 'interrupted (process stopped)' "
+                  "WHERE status = 'running' AND COALESCE(heartbeat_at, started_at) < ?",
+                  (now, now - STALE_SYNC_MS))

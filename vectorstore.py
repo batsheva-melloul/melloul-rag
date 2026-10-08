@@ -20,6 +20,7 @@ PgVectorStore config (env):
 """
 
 import os
+import time
 import logging
 
 import numpy as np
@@ -49,6 +50,12 @@ def _vec_out(value):
 # The pgvector column is fixed to this size.
 EMBED_DIM = 1536
 
+# How long a store may serve its cached list of source filenames (the book-picker
+# and the admin "docs" count read it). Writes in THIS process clear the cache at
+# once; the TTL is for the other gunicorn workers, which share the database but
+# not the cache, so a book indexed by one worker shows up everywhere within it.
+SOURCES_TTL_S = 5 * 60
+
 
 # ---------------------------------------------------------------------------
 # Chroma backend (local)
@@ -71,10 +78,12 @@ class ChromaStore:
 
     def delete_source(self, source: str) -> None:
         self._col.delete(where={"source": source})
+        self._sources_cache = None  # the book list changed
 
     def add(self, ids, embeddings, documents, metadatas) -> None:
         self._col.add(ids=ids, embeddings=embeddings,
                       documents=documents, metadatas=metadatas)
+        self._sources_cache = None  # a new/updated book: refresh the list
 
     def semantic(self, embedding, n: int) -> list[dict]:
         r = self._col.query(
@@ -106,8 +115,13 @@ class ChromaStore:
         return self._col.count()
 
     def sources(self, page: int = 5000) -> list[str]:
-        """Distinct source filenames in this corpus (cached, paginated)."""
-        if not hasattr(self, "_sources_cache"):
+        """
+        Distinct source filenames in this corpus (paginated). Cached for
+        SOURCES_TTL_S and invalidated by add()/delete_source(), so books a sync
+        just indexed appear at once (and, in other processes, within the TTL).
+        """
+        if getattr(self, "_sources_cache", None) is None or \
+                time.time() - self._sources_at > SOURCES_TTL_S:
             seen, offset = set(), 0
             while True:
                 got = self._col.get(include=["metadatas"], limit=page, offset=offset)
@@ -119,6 +133,7 @@ class ChromaStore:
                 if len(metas) < page:
                     break
             self._sources_cache = sorted(seen)
+            self._sources_at = time.time()
         return self._sources_cache
 
     def semantic_in_source(self, embedding, source: str, n: int) -> list[dict]:
@@ -270,6 +285,7 @@ class PgVectorStore:
     def delete_source(self, source: str) -> None:
         self._run("DELETE FROM chunks WHERE corpus_id=%s AND source=%s",
                   (self.corpus_id, source))
+        self._sources_cache = None  # the book list changed
 
     def add(self, ids, embeddings, documents, metadatas) -> None:
         rows = [
@@ -286,6 +302,7 @@ class PgVectorStore:
             "version=EXCLUDED.version, text=EXCLUDED.text, embedding=EXCLUDED.embedding",
             rows, many=True,
         )
+        self._sources_cache = None  # a new/updated book: refresh the list
 
     def semantic(self, embedding, n: int) -> list[dict]:
         rows = self._run(
@@ -317,11 +334,17 @@ class PgVectorStore:
         return row[0] if row else 0
 
     def sources(self) -> list[str]:
-        """Distinct source filenames in this corpus (cached)."""
-        if not hasattr(self, "_sources_cache"):
+        """
+        Distinct source filenames in this corpus. Cached for SOURCES_TTL_S and
+        invalidated by add()/delete_source(), so books a sync just indexed appear
+        in this worker at once and in the other gunicorn workers within the TTL.
+        """
+        if getattr(self, "_sources_cache", None) is None or \
+                time.time() - self._sources_at > SOURCES_TTL_S:
             rows = self._run("SELECT DISTINCT source FROM chunks WHERE corpus_id=%s",
                              (self.corpus_id,), fetch="all")
             self._sources_cache = sorted(r[0] for r in rows)
+            self._sources_at = time.time()
         return self._sources_cache
 
     def source_chunks(self, source: str, cap: int = 4000) -> list[dict]:

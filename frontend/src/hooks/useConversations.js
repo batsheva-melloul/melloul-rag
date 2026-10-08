@@ -76,40 +76,51 @@ export function useConversations(corpusId) {
   const savedRef = useRef(new Map());
   const saveTimerRef = useRef(null);
 
-  // On startup: fetch this user's conversations and merge them with the cache.
-  // Cached conversations the server has never seen (from before server-side
-  // history existed) are uploaded once, so nothing is lost in the migration.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await getAccessToken(instance, accounts);
-        const remote = await fetchConversations(token);
-        if (cancelled) return;
-        const remoteIds = new Set(remote.map((c) => c.id));
-        for (const c of remote) savedRef.current.set(c.id, JSON.stringify(c));
-        setConversations((local) => {
-          const merged = mergeConversations(local, remote);
-          for (const c of local) {
-            if (!remoteIds.has(c.id) && c.messages.length > 0) {
-              saveConversation(c, token).then(
-                () => savedRef.current.set(c.id, JSON.stringify(c)),
-                () => {}
-              );
-            }
+  // Fetch this user's conversations and merge them with the cache. Cached
+  // conversations the server has never seen (from before server-side history
+  // existed) are uploaded once, so nothing is lost in the migration.
+  //
+  // Saves are allowed ONLY after one merge has succeeded: PUT replaces the whole
+  // conversation, so if the load failed and we saved anyway, a stale cached copy
+  // (e.g. an older copy on a second device) could overwrite newer server data.
+  // Until then, every change retries the load instead of saving; the cache
+  // still holds everything, and saving resumes the moment the server answers.
+  const mountedRef = useRef(true);
+  const loadingRef = useRef(false);
+  async function loadFromServer() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const token = await getAccessToken(instance, accounts);
+      const remote = await fetchConversations(token);
+      if (!mountedRef.current) return;
+      const remoteIds = new Set(remote.map((c) => c.id));
+      for (const c of remote) savedRef.current.set(c.id, JSON.stringify(c));
+      setConversations((local) => {
+        const merged = mergeConversations(local, remote);
+        for (const c of local) {
+          if (!remoteIds.has(c.id) && c.messages.length > 0) {
+            saveConversation(c, token).then(
+              () => savedRef.current.set(c.id, JSON.stringify(c)),
+              () => {}
+            );
           }
-          return merged;
-        });
-      } catch {
-        // Offline / sign-in redirect in progress: keep working from the cache.
-        // Saves are still enabled below, so a temporary server hiccup does not
-        // silently stop history from syncing once the server is back.
-      } finally {
-        if (!cancelled) loadedRef.current = true;
-      }
-    })();
+        }
+        return merged;
+      });
+      loadedRef.current = true;
+    } catch {
+      // Offline / sign-in redirect in progress: keep working from the cache.
+    } finally {
+      loadingRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    loadFromServer();
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -117,7 +128,10 @@ export function useConversations(corpusId) {
   // After every change: write conversations that actually changed, debounced.
   // Empty conversations and ones with an answer still streaming are skipped.
   useEffect(() => {
-    if (!loadedRef.current) return undefined;
+    if (!loadedRef.current) {
+      loadFromServer(); // not merged yet (see above): retry the load, don't save
+      return undefined;
+    }
     const dirty = conversations.filter((c) => {
       if (c.messages.length === 0) return false;
       if (c.messages[c.messages.length - 1]?.streaming) return false;

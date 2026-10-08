@@ -24,6 +24,7 @@ Run:  python sharepoint.py            (sync all corpora)
 import os
 import time
 import logging
+import threading
 import httpx
 from dotenv import load_dotenv
 
@@ -35,6 +36,9 @@ from rag_core import RagEngine
 logger = logging.getLogger("rag.sharepoint")
 
 GRAPH = "https://graph.microsoft.com/v1.0"
+# How often a running sync proves it is alive (must be well under
+# history_store.STALE_SYNC_MS).
+HEARTBEAT_S = 60
 
 
 def get_app_token() -> str:
@@ -199,12 +203,25 @@ def sync_corpus_recorded(hostname: str, corpus: dict, engine: RagEngine,
             run_id = history.start_sync_run(corpus["id"], trigger_by)
         except Exception:
             logger.exception("could not record sync start")
+
+    # While the sync runs, a side thread ticks heartbeat_at once a minute. That
+    # is how other workers tell a live sync from one whose process died
+    # (HistoryStore.abandon_running_syncs only closes out runs that stopped ticking).
+    stop = threading.Event()
+    if run_id is not None:
+        def beat():
+            while not stop.wait(HEARTBEAT_S):
+                history.heartbeat_sync_run(run_id)
+        threading.Thread(target=beat, name=f"sync-heartbeat-{run_id}", daemon=True).start()
+
     try:
         summary = sync_corpus(hostname, corpus, engine)
     except Exception as error:
         if run_id is not None:
             history.finish_sync_run(run_id, status="error", error=f"{type(error).__name__}: {error}")
         raise
+    finally:
+        stop.set()
     if run_id is not None:
         history.finish_sync_run(run_id, status="ok", **summary)
     return summary
