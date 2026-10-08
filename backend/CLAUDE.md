@@ -23,7 +23,7 @@ itself — it imports `RagEngine` and exposes it over HTTP.
    then one `data: {"type":"done","sources":[...],"whole_book":bool}` (or
    `{"type":"error",...}`). It MUST stay `text/event-stream`: Azure App Service's
    front end holds any other chunked response until it completes (verified with
-   `GET /health/stream?fmt=ndjson|sse|text`, a no-auth diagnostic kept for this).
+   `GET /health/stream?fmt=ndjson|sse|text`, an admin-only diagnostic kept for this).
    It calls `RagEngine.answer_stream`, which shares `_prepare` (rewrite + retrieval +
    prompt) with `answer`, so the two can never differ in what they ground on.
    `/ask` stays for the CLI/eval and as a fallback.

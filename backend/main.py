@@ -229,8 +229,13 @@ def save_conversation(conversation_id: str, doc: ConversationDoc,
     """Create or update one conversation. Ids are client-generated."""
     if doc.id != conversation_id:
         raise HTTPException(status_code=400, detail="id mismatch")
-    if get_corpus(doc.corpusId) is None:
+    corpus = get_corpus(doc.corpusId)
+    if corpus is None:
         raise HTTPException(status_code=404, detail=f"Unknown corpus: {doc.corpusId}")
+    # Same rule as /ask: a conversation may only be filed under a corpus the
+    # user is allowed to use.
+    if not has_corpus_access(user, corpus):
+        raise HTTPException(status_code=403, detail="You do not have access to this corpus.")
     if not history.upsert_conversation(user_id(user), doc.model_dump()):
         raise HTTPException(status_code=403, detail="Not your conversation.")
     return {"ok": True}
@@ -335,10 +340,12 @@ def ask(request: AskRequest, user: dict = Depends(verify_token)) -> AskResponse:
 
 @app.get("/health/stream")
 async def health_stream(n: int = 5, gap: float = 0.6, pad: int = 0,
-                        fmt: str = "ndjson", mode: str = "sync") -> StreamingResponse:
+                        fmt: str = "ndjson", mode: str = "sync",
+                        user: dict = Depends(require_admin)) -> StreamingResponse:
     """
-    Diagnostic: `n` short lines, `gap` seconds apart, with NO auth and NO model
-    call. If a client receives them spread over time the hosting layer passes
+    Diagnostic (admins only — it can hold a connection open for minutes, so it
+    is not left open to the internet): `n` short lines, `gap` seconds apart, NO
+    model call. If a client receives them spread over time the hosting layer passes
     streamed responses through; if they all arrive together something in
     between is buffering. Knobs for finding out WHAT the hosting layer lets
     through: `pad` (bytes of filler in the first line, for size-based buffers),
