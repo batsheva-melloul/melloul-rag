@@ -11,6 +11,8 @@ Endpoints:
     GET  /admin/overview, /admin/questions, /admin/sync/status, POST /admin/sync
                       - admin page (ADMIN_USERS env or the "admin" App Role)
 
+A nightly SharePoint sync runs inside the app (backend/scheduler.py, SYNC_SCHEDULE).
+
 Each corpus is a separate document repository, configured in corpora.py, with its
 own isolated Chroma collection. Access is gated by Entra App Roles (see auth.py).
 
@@ -25,6 +27,7 @@ import threading
 import json
 import time
 import logging
+from contextlib import asynccontextmanager
 
 # Allow importing rag_core.py from the project root (one level up from /backend).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,6 +41,7 @@ from pydantic import BaseModel
 from log_config import setup_logging
 from rag_core import build_registry, NO_INFO_MESSAGE
 from history_store import HistoryStore
+from backend.scheduler import SyncScheduler
 from backend.auth import verify_token, has_corpus_access, DEMO_MODE
 from corpora import all_corpora, get_corpus
 
@@ -49,11 +53,20 @@ DEFAULT_CORPUS_ID = all_corpora()[0]["id"]
 
 # Internal app — disable the public API docs/schema (/docs, /redoc, /openapi.json)
 # so the endpoint structure isn't exposed to internet scanners.
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Runs in every worker once it is ready: start the nightly sync scheduler
+    (defined further down; the workers agree through the DB on who runs it)."""
+    scheduler.start()
+    yield
+
+
 app = FastAPI(
     title="Company RAG Chatbot",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 
@@ -430,6 +443,24 @@ def ask_stream(request: AskRequest, user: dict = Depends(verify_token)) -> Strea
 _sync_lock = threading.Lock()
 
 
+def run_sync(corpus: dict, trigger_by: str) -> dict:
+    """Pull new/changed documents for one corpus from SharePoint into this
+    process's engine and record the run. Shared by the admin button and the
+    nightly scheduler; the caller holds _sync_lock."""
+    import sharepoint  # imported lazily: needs the Graph env vars only when used
+    hostname = os.environ["SHAREPOINT_HOSTNAME"]
+    return sharepoint.sync_corpus_recorded(hostname, corpus, engines[corpus["id"]],
+                                           history, trigger_by)
+
+
+# Nightly sync (SYNC_SCHEDULE, default 03:00 Asia/Jerusalem); started by the
+# lifespan hook above once the worker is up. Needs the SharePoint credentials,
+# so it stays off on a laptop without them.
+scheduler = SyncScheduler(history, all_corpora, run_sync, _sync_lock)
+if not os.getenv("SHAREPOINT_HOSTNAME"):
+    scheduler.cfg = None  # no SharePoint credentials here: scheduled sync off
+
+
 @app.get("/admin/overview")
 def admin_overview(days: int = Query(7, ge=1, le=365),
                    user: dict = Depends(require_admin)) -> dict:
@@ -459,6 +490,7 @@ def admin_overview(days: int = Query(7, ge=1, le=365),
         "corpora": corpora,
         "usage": history.usage_stats(days),
         "runningSync": history.running_sync(),
+        "schedule": scheduler.status(),
         "historyBackend": history.backend,
         "storage": storage,
     }
@@ -487,17 +519,18 @@ def admin_sync(corpus_id: str, user: dict = Depends(require_admin)) -> dict:
     corpus = get_corpus(corpus_id)
     if corpus is None:
         raise HTTPException(status_code=404, detail=f"Unknown corpus: {corpus_id}")
+    # Running here (this worker), or anywhere (another worker / the scheduler)?
     if not _sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A sync is already running.")
+    if history.running_sync() is not None:
+        _sync_lock.release()
         raise HTTPException(status_code=409, detail="A sync is already running.")
 
     who = user_display(user)
-    import sharepoint  # imported lazily: needs the Graph env vars only when used
 
     def run():
         try:
-            hostname = os.environ["SHAREPOINT_HOSTNAME"]
-            sharepoint.sync_corpus_recorded(hostname, corpus, engines[corpus_id],
-                                            history, f"admin:{who}")
+            run_sync(corpus, f"admin:{who}")
         except Exception:
             logger.exception("admin sync failed for %s", corpus_id)
         finally:

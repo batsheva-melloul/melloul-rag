@@ -8,7 +8,10 @@ Server-side storage for everything that is NOT document chunks:
                      (who, which corpus, answered / "no info" / error, latency).
                      This is what the admin page reports on.
   - sync_runs      : one row per SharePoint sync (started/finished, counts,
-                     status), whether started from the CLI or the admin page.
+                     status), whether started from the CLI, the admin page or
+                     the nightly scheduler.
+  - sync_schedule  : which nightly slot was last claimed (one row), so that only
+                     one of the web workers runs the scheduled sync.
 
 Backend: Postgres when DATABASE_URL is set (the same database pgvector uses),
 otherwise a local SQLite file (HISTORY_DB, default data/history.db) so the app
@@ -73,6 +76,8 @@ class HistoryStore:
                             return cur.fetchone()
                         if fetch == "all":
                             return cur.fetchall()
+                        if fetch == "rowcount":
+                            return cur.rowcount
                         return None
                     finally:
                         cur.close()
@@ -114,7 +119,7 @@ class HistoryStore:
         self._run(f"""CREATE TABLE IF NOT EXISTS sync_runs (
                         id          {serial},
                         corpus_id   text NOT NULL,
-                        trigger_by  text,          -- cli | admin:<user>
+                        trigger_by  text,          -- cli | admin:<user> | schedule
                         started_at  bigint NOT NULL,
                         finished_at bigint,
                         status      text NOT NULL, -- running | ok | error
@@ -125,6 +130,12 @@ class HistoryStore:
                       )""")
         self._run("CREATE INDEX IF NOT EXISTS sync_runs_corpus "
                   "ON sync_runs (corpus_id, started_at)")
+        # One row per schedule: which slot (scheduled time, epoch ms) was last
+        # claimed. Lets several web workers agree on who runs the nightly sync.
+        self._run("""CREATE TABLE IF NOT EXISTS sync_schedule (
+                        key        text PRIMARY KEY,
+                        last_slot  bigint
+                      )""")
 
     # --------------------------------------------------------- conversations
 
@@ -304,6 +315,23 @@ class HistoryStore:
         if not r:
             return None
         return {"id": r[0], "corpusId": r[1], "triggerBy": r[2], "startedAt": r[3]}
+
+    def claim_scheduled_sync(self, slot_ms: int, key: str = "nightly") -> bool:
+        """
+        Atomically claim the scheduled run for `slot_ms`. Every worker calls this
+        at the scheduled time; exactly one gets True (the UPDATE only matches
+        while the stored slot is older), the others skip the run.
+        """
+        if self.backend == "postgres":
+            self._run("INSERT INTO sync_schedule (key, last_slot) VALUES (?, NULL) "
+                      "ON CONFLICT DO NOTHING", (key,))
+        else:
+            self._run("INSERT OR IGNORE INTO sync_schedule (key, last_slot) VALUES (?, NULL)",
+                      (key,))
+        changed = self._run("UPDATE sync_schedule SET last_slot = ? "
+                            "WHERE key = ? AND (last_slot IS NULL OR last_slot < ?)",
+                            (slot_ms, key, slot_ms), fetch="rowcount")
+        return bool(changed)
 
     def abandon_running_syncs(self) -> None:
         """At startup: a run still marked 'running' belongs to a process that

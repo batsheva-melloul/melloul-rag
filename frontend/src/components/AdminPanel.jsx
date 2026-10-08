@@ -34,6 +34,26 @@ function timeAgo(ms) {
   return `לפני ${Math.round(hours / 24)} ימים`;
 }
 
+// "בעוד 5 שע׳" for a future timestamp.
+function timeUntil(ms) {
+  if (!ms) return "—";
+  const minutes = Math.round((ms - Date.now()) / 60000);
+  if (minutes < 1) return "עכשיו";
+  if (minutes < 60) return `בעוד ${minutes} דק׳`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `בעוד ${hours} שע׳`;
+  return `בעוד ${Math.round(hours / 24)} ימים`;
+}
+
+// Who started a sync run: the scheduler, the CLI, or an admin (by name).
+function triggerLabel(triggerBy) {
+  if (!triggerBy) return "";
+  if (triggerBy === "schedule") return "אוטומטי";
+  if (triggerBy === "cli") return "ידני (CLI)";
+  if (triggerBy.startsWith("admin:")) return `ידני · ${triggerBy.slice(6)}`;
+  return triggerBy;
+}
+
 function fmtNumber(n) {
   if (n === null || n === undefined) return "—";
   return Number(n).toLocaleString("he-IL");
@@ -118,17 +138,33 @@ function SyncCell({ run }) {
       </span>
     );
   }
+  const who = triggerLabel(run.triggerBy);
   if (run.status === "error") {
     return (
       <span className="sync-state error" title={run.error || ""}>
         ! נכשל {timeAgo(run.finishedAt || run.startedAt)}
         {run.error ? ` — ${run.error.slice(0, 80)}` : ""}
+        {who && <span className="muted small"> · {who}</span>}
       </span>
     );
   }
   return (
     <span className="sync-state ok" title={fmtDateTime(run.finishedAt)}>
       ✓ {timeAgo(run.finishedAt)} · {fmtNumber(run.indexed)} חדשים/עודכנו, {fmtNumber(run.skipped)} ללא שינוי
+      {who && <span className="muted small"> · {who}</span>}
+    </span>
+  );
+}
+
+// One line under the corpora title: is the nightly sync on, and when is the next run.
+function ScheduleLine({ schedule }) {
+  if (!schedule) return null;
+  if (!schedule.enabled) {
+    return <span className="muted small">סנכרון אוטומטי כבוי (SYNC_SCHEDULE)</span>;
+  }
+  return (
+    <span className="muted small" title={fmtDateTime(schedule.nextRunAt)}>
+      סנכרון אוטומטי כל יום ב-{schedule.time} · הבא {timeUntil(schedule.nextRunAt)}
     </span>
   );
 }
@@ -232,7 +268,10 @@ function AdminPanel({ corpora }) {
       </section>
 
       <section className="admin-section">
-        <h3>מאגרים</h3>
+        <div className="section-head">
+          <h3>מאגרים</h3>
+          <ScheduleLine schedule={overview?.schedule} />
+        </div>
         <div className="table-wrap">
           <table className="admin-table">
             <thead>

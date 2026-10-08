@@ -44,6 +44,13 @@ itself — it imports `RagEngine` and exposes it over HTTP.
   `GET /admin/questions`, `GET /admin/sync/status`, `POST /admin/sync?corpus_id=`
   (runs `sharepoint.sync_corpus_recorded` in a background thread with this process's
   engine; one at a time; `sync_runs` rows make "last sync" visible, also for CLI runs).
+- **Nightly sync:** `scheduler.py` runs the same sync for every corpus at
+  `SYNC_SCHEDULE` (default `03:00`, `SYNC_TZ` default `Asia/Jerusalem`; `off` disables).
+  Each gunicorn worker starts the scheduler; the `sync_schedule` table is used to claim
+  the slot so only one worker runs it (`history.claim_scheduled_sync`). It is off when
+  `SHAREPOINT_HOSTNAME` is unset (local dev). **Production needs "Always On"** on the
+  App Service, otherwise the process is asleep at night. Runs appear in the admin page
+  as "אוטומטי"; the overview returns `schedule.nextRunAt`.
   The overview also reports database storage (`history.storage_stats()`: total,
   chunks, conversations, question log). Set `DB_STORAGE_GB` (the size allocated to
   the Postgres server) to show "used of total" with a meter; SQL cannot see the quota.

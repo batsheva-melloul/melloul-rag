@@ -24,6 +24,7 @@ RAG/
 ├── history_store.py   # Conversations, question log, sync runs (Postgres or SQLite)
 ├── backend/
 │   ├── main.py        # FastAPI: /ask, /ask/stream, /conversations, /admin/*
+│   ├── scheduler.py   # Nightly SharePoint sync (needs Always On in App Service)
 │   └── auth.py        # Entra JWT validation (Depends(verify_token))
 ├── frontend/          # React (plain JS) chat UI, with MSAL sign-in
 ├── docs/              # Local PDF documents (input)
@@ -89,6 +90,8 @@ npm run dev          # opens http://localhost:5173
 - **Azure App Service buffers streamed responses** unless the content type is
   `text/event-stream`. `/ask/stream` therefore speaks SSE; do not change it to
   NDJSON/plain text (measured with `GET /health/stream?fmt=...`).
+- **Nightly sync needs "Always On"** on the App Service (General settings). Without
+  it the process is stopped when idle and the 03:00 run never happens.
 - **OCR:** `pypdf` only reads a real text layer. Scanned/image-only PDFs yield 0 text and
   are rejected. Use PDFs that already contain extractable text.
 
@@ -96,7 +99,8 @@ npm run dev          # opens http://localhost:5173
 
 1. ✅ Local MVP (single script, in-memory) — done
 2. ✅ Real vector store (Chroma) — done
-3. ✅ Pull documents from SharePoint via Microsoft Graph — done (`sharepoint.py`, run manually)
+3. ✅ Pull documents from SharePoint via Microsoft Graph — done (`sharepoint.py`; manual,
+   admin button, or nightly via `backend/scheduler.py` + `SYNC_SCHEDULE`)
 4. ✅ React chat UI + FastAPI backend — done
 5. ✅ Entra ID SSO (internal only) — done; see `design/auth-flow.md`
 6. ✅ Cloud deployment — done (Azure App Service, single service serving API + `frontend/dist`)

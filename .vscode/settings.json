@@ -12,5 +12,6 @@
     "sync.log",
     "backup.log",
     "data{,/**}"
-  ]
+  ],
+  "appService.defaultWebAppToDeploy": "None"
 }

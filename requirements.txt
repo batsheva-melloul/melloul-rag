@@ -11,3 +11,4 @@ uvicorn
 gunicorn
 httpx
 PyJWT[crypto]
+tzdata
