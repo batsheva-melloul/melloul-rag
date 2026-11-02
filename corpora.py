@@ -18,7 +18,9 @@ CORPORA = [
         "site_path": "sites/MAGAR",
         # Sync ONLY this subfolder of the site's document library (the OCR'd
         # books with a real text layer). Omit "folder" to sync the whole library.
-        "folder": "ספרים OCR",
+        # NOTE: the folder was renamed in SharePoint on ~2026-10-14 (it used to be
+        # "ספרים OCR"); the nightly sync 404'd for three weeks until this was updated.
+        "folder": "ספרי פילוסופיה OCR",
         "role": "magar",  # only users assigned the "magar" App Role can access
     },
     {
