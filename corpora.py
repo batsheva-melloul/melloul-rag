@@ -29,14 +29,6 @@ CORPORA = [
         "site_path": "sites/MagarMIsim",
         "role": "misim",  # only users assigned the "misim" App Role can access
     },
-    {
-        # Example empty corpus — appears in the UI as a third chatbot.
-        # It has no documents until its SharePoint site is synced.
-        "id": "demo",
-        "name": "מאגר לדוגמה (ריק)",
-        "site_path": "sites/Demo",
-        "role": None,
-    },
 ]
 
 
