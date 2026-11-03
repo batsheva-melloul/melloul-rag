@@ -51,6 +51,14 @@ itself — it imports `RagEngine` and exposes it over HTTP.
   `SHAREPOINT_HOSTNAME` is unset (local dev). **Production needs "Always On"** on the
   App Service, otherwise the process is asleep at night. Runs appear in the admin page
   as "אוטומטי"; the overview returns `schedule.nextRunAt`.
+- **Failure alerts (`../alerts.py`):** when a scheduled run fails for any corpus (or
+  cannot run because a manual sync never finished) ONE email goes to `ALERT_EMAIL_TO`
+  (comma-separated; unset = alerts off) via Microsoft Graph `sendMail`, using the same
+  app-only credentials as the SharePoint sync. Needs the **`Mail.Send` (Application)**
+  permission + admin consent on the app registration; `ALERT_EMAIL_FROM` is the mailbox
+  it sends as (default: first recipient); `APP_URL` is linked in the mail (optional).
+  Alerts never raise. The overview returns `schedule.alerts` and the admin page shows it.
+  `python alerts.py test` sends a real test mail.
   The overview also reports database storage (`history.storage_stats()`: total,
   chunks, conversations, question log). Set `DB_STORAGE_GB` (the size allocated to
   the Postgres server) to show "used of total" with a meter; SQL cannot see the quota.

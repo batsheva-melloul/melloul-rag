@@ -22,6 +22,7 @@ RAG/
 ├── rag_core.py        # Core RAG logic (PDF → chunks → embeddings → Chroma → answer)
 ├── rag_pipeline.py    # Command-line interface (interactive Q&A loop)
 ├── history_store.py   # Conversations, question log, sync runs (Postgres or SQLite)
+├── alerts.py          # Email (Graph sendMail) when the nightly sync fails — ALERT_EMAIL_TO
 ├── backend/
 │   ├── main.py        # FastAPI: /ask, /ask/stream, /conversations, /admin/*
 │   ├── scheduler.py   # Nightly SharePoint sync (needs Always On in App Service)
@@ -52,6 +53,7 @@ Create a `.env` file with:
 ```
 GEMINI_API_KEY=your_key_here
 ADMIN_USERS=you@company.com        # who may open the admin page (comma-separated)
+ALERT_EMAIL_TO=you@company.com     # email when the nightly sync fails (needs Mail.Send app permission)
 ```
 
 ## Running

@@ -21,6 +21,8 @@ import logging
 import threading
 from datetime import datetime, timedelta, time as dtime, timezone
 
+import alerts  # email when a night run fails or cannot run (off unless ALERT_EMAIL_TO)
+
 logger = logging.getLogger("rag.scheduler")
 
 DEFAULT_TIME = "03:00"
@@ -102,12 +104,14 @@ class SyncScheduler:
         logger.info("scheduled sync: every day at %s (%s)", self.cfg["label"], self.cfg["tzName"])
 
     def status(self) -> dict:
-        """What the admin page shows: when the next run is due."""
+        """What the admin page shows: when the next run is due, and whether a
+        failure would be emailed (and to whom)."""
+        mail = {"enabled": alerts.enabled(), "to": alerts.recipients()}
         if not self.enabled:
-            return {"enabled": False}
+            return {"enabled": False, "alerts": mail}
         nxt = self._next or next_run_at(self.cfg)
         return {"enabled": True, "time": self.cfg["label"], "tz": self.cfg["tzName"],
-                "nextRunAt": int(nxt.timestamp() * 1000)}
+                "nextRunAt": int(nxt.timestamp() * 1000), "alerts": mail}
 
     # ------------------------------------------------------------------ loop
 
@@ -138,16 +142,25 @@ class SyncScheduler:
         while self.history.running_sync() is not None:
             if time.time() > deadline:
                 logger.warning("scheduled sync skipped: a manual sync is still running")
+                alerts.notify_sync_skipped("סנכרון ידני אחר עדיין רץ גם אחרי שעה של המתנה")
                 return False
             time.sleep(POLL_S)
 
+        # Every corpus is attempted even if an earlier one fails; the failures are
+        # collected and reported in ONE mail at the end (nobody watches at 03:00).
+        failures = []
         with self.lock:
             logger.info("scheduled sync starting")
             for corpus in self.corpora():
                 try:
                     summary = self.run_corpus(corpus, TRIGGER)
                     logger.info("scheduled sync %s: %s", corpus["id"], summary)
-                except Exception:
+                except Exception as error:
                     logger.exception("scheduled sync failed for %s", corpus["id"])
+                    failures.append({"corpus": corpus.get("name", corpus["id"]),
+                                     "id": corpus["id"],
+                                     "error": f"{type(error).__name__}: {error}"})
             logger.info("scheduled sync done")
+        if failures:
+            alerts.notify_sync_failures(failures, slot)
         return True

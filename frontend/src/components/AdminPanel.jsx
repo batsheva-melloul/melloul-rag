@@ -159,12 +159,20 @@ function SyncCell({ run }) {
 // One line under the corpora title: is the nightly sync on, and when is the next run.
 function ScheduleLine({ schedule }) {
   if (!schedule) return null;
+  // Whether a failed night run would be emailed, and to whom (ALERT_EMAIL_TO).
+  const mail = schedule.alerts;
+  const mailText = !mail
+    ? ""
+    : mail.enabled
+      ? ` · התראה במייל ל-${mail.to.join(", ")}`
+      : " · התראות במייל כבויות (ALERT_EMAIL_TO)";
   if (!schedule.enabled) {
-    return <span className="muted small">סנכרון אוטומטי כבוי (SYNC_SCHEDULE)</span>;
+    return <span className="muted small">סנכרון אוטומטי כבוי (SYNC_SCHEDULE){mailText}</span>;
   }
   return (
     <span className="muted small" title={fmtDateTime(schedule.nextRunAt)}>
       סנכרון אוטומטי כל יום ב-{schedule.time} · הבא {timeUntil(schedule.nextRunAt)}
+      {mailText}
     </span>
   );
 }
