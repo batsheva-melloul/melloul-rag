@@ -1,0 +1,63 @@
+name: Deploy to Azure App Service
+
+# Every push to main deploys the app (backend + a freshly built frontend) to the
+# App Service "melloulbot" — the same Kudu zip deploy the VS Code "Deploy to Web
+# App" button performs; the server's Oryx build then installs requirements.txt.
+#
+# One-time setup: add the App Service publish profile as the repository secret
+# AZURE_WEBAPP_PUBLISH_PROFILE (Azure Portal -> App Service -> Overview ->
+# "Download publish profile"; paste the whole file). Until that secret exists
+# the workflow only builds and skips the deploy with a notice.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "design/**"
+  workflow_dispatch:
+
+# Never run two deploys at once; let a running one finish.
+concurrency:
+  group: deploy-melloulbot
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the frontend (production serves frontend/dist, not src)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package the app (same exclusions as the VS Code deploy)
+        run: |
+          zip -r -q app.zip . \
+            -x ".git/*" ".github/*" "venv/*" "frontend/node_modules/*" \
+               "*/__pycache__/*" "__pycache__/*" "*.pyc" ".env" ".vscode/*" \
+               "chroma_db/*" "chroma_backups/*" "data/*" "*.log" "app.zip"
+          ls -lh app.zip
+
+      - name: Deploy to App Service
+        if: env.HAS_PROFILE == 'true'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: melloulbot
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: app.zip
+
+      - name: No publish profile yet
+        if: env.HAS_PROFILE != 'true'
+        run: echo "::notice::Build OK, but the secret AZURE_WEBAPP_PUBLISH_PROFILE is not set - add it under Settings > Secrets and variables > Actions to enable automatic deploys."

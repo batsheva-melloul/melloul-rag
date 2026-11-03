@@ -97,6 +97,24 @@ npm run dev          # opens http://localhost:5173
 - **OCR:** `pypdf` only reads a real text layer. Scanned/image-only PDFs yield 0 text and
   are rejected. Use PDFs that already contain extractable text.
 
+## Deploying
+
+Two routes to the same App Service (`melloulbot`, RG `OpenAI`, West Europe):
+
+- **Automatic (preferred):** every push to `main` runs `.github/workflows/deploy.yml`,
+  which builds the frontend on GitHub, zips the repo with the same exclusions as the
+  VS Code deploy, and deploys via Kudu with the publish profile stored as the repository
+  secret `AZURE_WEBAPP_PUBLISH_PROFILE`. No local `npm run build` is needed for this route.
+  Markdown/design-only pushes are skipped. If the secret is missing the run only builds.
+  Setup/rotation: Azure Portal → App Service → Overview → "Download publish profile"
+  (needs "SCM Basic Auth Publishing Credentials" ON under Configuration → General
+  settings) → GitHub repo → Settings → Secrets and variables → Actions → paste as
+  `AZURE_WEBAPP_PUBLISH_PROFILE`.
+- **Manual (fallback):** `npm run build` in `frontend/`, then VS Code → Azure → `melloulbot`
+  → "Deploy to Web App" (exclusions in `.vscode/settings.json`).
+
+After either route: wait 1–4 minutes for the app to restart, then Ctrl+Shift+R.
+
 ## Build phases
 
 1. ✅ Local MVP (single script, in-memory) — done
