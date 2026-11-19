@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
 import { getAccessToken } from "../auth/getToken";
 import {
@@ -202,25 +202,49 @@ function ScheduleLine({ schedule }) {
   );
 }
 
+// The page is one screen: KPI tiles on top, then ONE tabbed detail area right
+// under them. A tile click switches to the matching tab with its filter preset
+// (no scrolling, nothing to close). The chosen tab is remembered per browser.
+const TABS = [
+  { id: "questions", label: "שאלות" },
+  { id: "users", label: "משתמשים" },
+  { id: "corpora", label: "מאגרים" },
+  { id: "storage", label: "אחסון" },
+];
+const TAB_KEY = "rag_admin_tab";
+
+function readSavedTab() {
+  try {
+    const t = localStorage.getItem(TAB_KEY);
+    return TABS.some((x) => x.id === t) ? t : "questions";
+  } catch {
+    return "questions";
+  }
+}
+
 function AdminPanel({ corpora }) {
   const { instance, accounts } = useMsal();
   const [days, setDays] = useState(7);
+  const [tab, setTab] = useState(readSavedTab);
   const [overview, setOverview] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [users, setUsers] = useState([]);
-  // The question log follows the same period as the tiles, so clicking a tile
-  // shows exactly the questions it counted. userId/userName narrow it to one
-  // person (set from the users list).
+  // The question log follows the same period as the tiles, so a tile shows
+  // exactly the questions it counted. userId/userName narrow it to one person.
   const [filter, setFilter] = useState({ corpusId: "", status: "", userId: "", userName: "" });
   const [sortBy, setSortBy] = useState("ts"); // "ts" (newest) | "latency" (slowest)
-  const [showUsers, setShowUsers] = useState(false);
+  // Users tab: which row is expanded, and that person's recent questions (cached).
+  const [expandedUser, setExpandedUser] = useState("");
+  const [userQuestions, setUserQuestions] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const pollRef = useRef(null);
-  const usersRef = useRef(null);
-  const questionsRef = useRef(null);
 
   const token = useCallback(() => getAccessToken(instance, accounts), [instance, accounts]);
+
+  useEffect(() => {
+    try { localStorage.setItem(TAB_KEY, tab); } catch { /* private mode */ }
+  }, [tab]);
 
   const load = useCallback(async () => {
     setError("");
@@ -237,34 +261,11 @@ function AdminPanel({ corpora }) {
       setOverview(ov);
       setQuestions(qs);
       setUsers(us);
+      setUserQuestions({}); // period may have changed
     } catch (e) {
       setError("לא ניתן לטעון את נתוני הניהול. ייתכן שאין לך הרשאת ניהול.");
     }
   }, [days, filter.corpusId, filter.status, filter.userId, token]);
-
-  // Tile clicks: show the detail behind the number and scroll to it.
-  const scrollTo = (ref) => setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-  function showQuestions(status, sort = "ts") {
-    setFilter((f) => ({ ...f, status }));
-    setSortBy(sort);
-    scrollTo(questionsRef);
-  }
-  function toggleUsers() {
-    const next = !showUsers;
-    setShowUsers(next);
-    if (next) scrollTo(usersRef);
-  }
-  function showUserQuestions(u) {
-    setFilter((f) => ({ ...f, status: "", userId: u.userId, userName: u.user || u.userId }));
-    setSortBy("ts");
-    scrollTo(questionsRef);
-  }
-  const clearUser = () => setFilter((f) => ({ ...f, userId: "", userName: "" }));
-
-  const sortedQuestions =
-    sortBy === "latency"
-      ? [...questions].sort((a, b) => (b.latencyMs || 0) - (a.latencyMs || 0))
-      : questions;
 
   useEffect(() => {
     load();
@@ -305,10 +306,53 @@ function AdminPanel({ corpora }) {
     }
   }
 
+  // --- navigation: tiles and in-table links all land in a tab with a preset filter
+  function openQuestions({ status = "", corpusId = "", sort = "ts" } = {}) {
+    setFilter({ corpusId, status, userId: "", userName: "" });
+    setSortBy(sort);
+    setTab("questions");
+  }
+  function openUserQuestions(u) {
+    setFilter({ corpusId: "", status: "", userId: u.userId, userName: u.user || u.userId });
+    setSortBy("ts");
+    setTab("questions");
+  }
+  const clearUser = () => setFilter((f) => ({ ...f, userId: "", userName: "" }));
+
+  // Users tab: expand a row to see that person's latest questions inline.
+  async function toggleUser(u) {
+    const id = u.userId;
+    if (expandedUser === id) {
+      setExpandedUser("");
+      return;
+    }
+    setExpandedUser(id);
+    if (!userQuestions[id]) {
+      try {
+        const t = await token();
+        const qs = await fetchAdminQuestions({ userId: id, days, limit: 15 }, t);
+        setUserQuestions((prev) => ({ ...prev, [id]: qs }));
+      } catch {
+        setUserQuestions((prev) => ({ ...prev, [id]: [] }));
+      }
+    }
+  }
+
+  const sortedQuestions =
+    sortBy === "latency"
+      ? [...questions].sort((a, b) => (b.latencyMs || 0) - (a.latencyMs || 0))
+      : questions;
+
   const usage = overview?.usage?.total;
   const noInfoPct =
     usage && usage.questions ? Math.round((usage.no_info / usage.questions) * 100) : 0;
   const corpusName = (id) => corpora.find((c) => c.id === id)?.name || id;
+  const tabCount = {
+    questions: usage?.questions,
+    users: usage?.active_users,
+    corpora: overview?.corpora?.length,
+    storage: null,
+  };
 
   return (
     <div className="admin">
@@ -329,46 +373,145 @@ function AdminPanel({ corpora }) {
         <StatTile
           label={`שאלות ב-${days} הימים האחרונים`}
           value={fmtNumber(usage?.questions)}
-          onClick={() => showQuestions("")}
-          active={!filter.status && !filter.userId && sortBy === "ts"}
-          cta="כל השאלות ↓"
+          onClick={() => openQuestions()}
+          active={tab === "questions" && !filter.status && !filter.userId && !filter.corpusId && sortBy === "ts"}
+          cta="כל השאלות"
         />
         <StatTile
           label="ללא תשובה במסמכים"
           value={fmtNumber(usage?.no_info)}
           hint={usage?.questions ? `${noInfoPct}% מהשאלות` : ""}
-          onClick={() => showQuestions("no_info")}
-          active={filter.status === "no_info"}
-          cta="אילו שאלות? ↓"
+          onClick={() => openQuestions({ status: "no_info" })}
+          active={tab === "questions" && filter.status === "no_info"}
+          cta="אילו שאלות?"
         />
         <StatTile
           label="שגיאות"
           value={fmtNumber(usage?.errors)}
-          onClick={() => showQuestions("error")}
-          active={filter.status === "error"}
-          cta="אילו שאלות? ↓"
+          onClick={() => openQuestions({ status: "error" })}
+          active={tab === "questions" && filter.status === "error"}
+          cta="אילו שאלות?"
         />
         <StatTile
           label="משתמשים פעילים"
           value={fmtNumber(usage?.active_users)}
-          onClick={toggleUsers}
-          active={showUsers}
-          cta={showUsers ? "הסתר ↑" : "מי? ↓"}
+          onClick={() => setTab("users")}
+          active={tab === "users"}
+          cta="מי?"
         />
         <StatTile
           label="זמן תשובה ממוצע"
           value={fmtSeconds(usage?.avg_latency_ms)}
-          onClick={() => showQuestions("", "latency")}
-          active={sortBy === "latency"}
-          cta="האיטיות ביותר ↓"
+          onClick={() => openQuestions({ sort: "latency" })}
+          active={tab === "questions" && sortBy === "latency"}
+          cta="האיטיות ביותר"
         />
       </section>
 
-      {showUsers && (
-        <section className="admin-section" ref={usersRef}>
+      <nav className="tabs" role="tablist" aria-label="פירוט">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`tab ${tab === t.id ? "on" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+            {tabCount[t.id] !== null && tabCount[t.id] !== undefined && (
+              <span className="tab-count">{fmtNumber(tabCount[t.id])}</span>
+            )}
+            {t.id === "corpora" && running && <span className="tab-dot" title="סנכרון רץ" />}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "questions" && (
+        <section className="admin-section tab-panel">
+          <div className="section-head">
+            <h3>שאלות ב-{days} הימים האחרונים</h3>
+            <div className="admin-controls">
+              {filter.userId && (
+                <button className="filter-chip" onClick={clearUser} title="הסר את סינון המשתמש">
+                  משתמש: {filter.userName} ✕
+                </button>
+              )}
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} title="מיון">
+                <option value="ts">החדשות קודם</option>
+                <option value="latency">האיטיות קודם</option>
+              </select>
+              <select
+                value={filter.corpusId}
+                onChange={(e) => setFilter((f) => ({ ...f, corpusId: e.target.value }))}
+              >
+                <option value="">כל המאגרים</option>
+                {corpora.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <select
+                value={filter.status}
+                onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))}
+              >
+                <option value="">כל הסטטוסים</option>
+                <option value="no_info">רק ללא מידע</option>
+                <option value="error">רק שגיאות</option>
+                <option value="answered">רק שנענו</option>
+              </select>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>מתי</th>
+                  <th>מי</th>
+                  <th>מאגר</th>
+                  <th>שאלה</th>
+                  <th>סטטוס</th>
+                  <th>מקורות</th>
+                  <th>זמן</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedQuestions.length === 0 && (
+                  <tr><td colSpan="7" className="muted">אין שאלות להצגה.</td></tr>
+                )}
+                {sortedQuestions.map((q, i) => {
+                  const st = STATUS_LABEL[q.status] || { icon: "", text: q.status };
+                  return (
+                    <tr key={i}>
+                      <td className="nowrap" title={fmtDateTime(q.ts)}>{timeAgo(q.ts)}</td>
+                      <td className="nowrap">
+                        {q.userId ? (
+                          <button
+                            className="link-btn"
+                            onClick={() => openUserQuestions({ userId: q.userId, user: q.user })}
+                            title="רק השאלות של המשתמש הזה"
+                          >
+                            {q.user || "—"}
+                          </button>
+                        ) : (q.user || "—")}
+                      </td>
+                      <td className="nowrap">{corpusName(q.corpusId)}</td>
+                      <td className="q-text" title={q.question}>{q.question}</td>
+                      <td className={`status ${q.status}`}><span className="status-icon">{st.icon}</span> {st.text}</td>
+                      <td className="num">{fmtNumber(q.sources)}{q.wholeBook ? " 📚" : ""}</td>
+                      <td className="num">{fmtSeconds(q.latencyMs)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {tab === "users" && (
+        <section className="admin-section tab-panel">
           <div className="section-head">
             <h3>משתמשים פעילים ב-{days} הימים האחרונים</h3>
-            <span className="muted small">לחיצה על שורה מציגה את השאלות של אותו משתמש</span>
+            <span className="muted small">לחיצה על שורה פותחת את השאלות האחרונות של המשתמש</span>
           </div>
           <div className="table-wrap">
             <table className="admin-table">
@@ -387,160 +530,137 @@ function AdminPanel({ corpora }) {
                 {users.length === 0 && (
                   <tr><td colSpan="7" className="muted">אין משתמשים בתקופה הזו.</td></tr>
                 )}
-                {users.map((u) => (
-                  <tr
-                    key={u.userId}
-                    className={`user-row-btn ${filter.userId === u.userId ? "active" : ""}`}
-                    onClick={() => showUserQuestions(u)}
-                    title="הצג את השאלות של המשתמש"
-                  >
-                    <td className="nowrap cell-title">{u.user || u.userId}</td>
-                    <td className="num">{fmtNumber(u.questions)}</td>
-                    <td className="num">{fmtNumber(u.noInfo)}</td>
-                    <td className="num">{fmtNumber(u.errors)}</td>
-                    <td>{(u.corpora || []).map(corpusName).join(", ") || "—"}</td>
-                    <td className="num">{fmtSeconds(u.avgLatencyMs)}</td>
-                    <td className="nowrap" title={fmtDateTime(u.lastTs)}>{timeAgo(u.lastTs)}</td>
-                  </tr>
-                ))}
+                {users.map((u) => {
+                  const open = expandedUser === u.userId;
+                  const qs = userQuestions[u.userId];
+                  return (
+                    <Fragment key={u.userId}>
+                      <tr
+                        className={`user-row-btn ${open ? "open" : ""}`}
+                        onClick={() => toggleUser(u)}
+                        aria-expanded={open}
+                      >
+                        <td className="nowrap cell-title">
+                          <span className={`row-arrow ${open ? "open" : ""}`}>▸</span> {u.user || u.userId}
+                        </td>
+                        <td className="num">{fmtNumber(u.questions)}</td>
+                        <td className="num">{fmtNumber(u.noInfo)}</td>
+                        <td className="num">{fmtNumber(u.errors)}</td>
+                        <td>{(u.corpora || []).map(corpusName).join(", ") || "—"}</td>
+                        <td className="num">{fmtSeconds(u.avgLatencyMs)}</td>
+                        <td className="nowrap" title={fmtDateTime(u.lastTs)}>{timeAgo(u.lastTs)}</td>
+                      </tr>
+                      {open && (
+                        <tr className="user-detail">
+                          <td colSpan="7">
+                            {!qs && <span className="muted small">טוען…</span>}
+                            {qs && qs.length === 0 && <span className="muted small">אין שאלות.</span>}
+                            {qs && qs.length > 0 && (
+                              <ul className="user-questions">
+                                {qs.map((q, i) => {
+                                  const st = STATUS_LABEL[q.status] || { icon: "", text: q.status };
+                                  return (
+                                    <li key={i}>
+                                      <span className="muted small nowrap" title={fmtDateTime(q.ts)}>{timeAgo(q.ts)}</span>
+                                      <span className="muted small nowrap">{corpusName(q.corpusId)}</span>
+                                      <span className="uq-text" title={q.question}>{q.question}</span>
+                                      <span className={`status ${q.status} small nowrap`}>{st.icon} {st.text}</span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                            <button className="link-btn small" onClick={() => openUserQuestions(u)}>
+                              כל השאלות של {u.user || u.userId} בטבלה המלאה ←
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </section>
       )}
 
-      <section className="admin-section">
-        <div className="section-head">
-          <h3>מאגרים</h3>
-          <ScheduleLine schedule={overview?.schedule} />
-        </div>
-        <div className="table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>מאגר</th>
-                <th>מסמכים</th>
-                <th>קטעים</th>
-                <th>שאלות ({days} ימים)</th>
-                <th>סנכרון אחרון</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(overview?.corpora || []).map((c) => {
-                const pc = overview?.usage?.per_corpus?.[c.id];
-                const isRunningHere = running && running.corpusId === c.id;
-                return (
-                  <tr key={c.id}>
-                    <td>
-                      <div className="cell-title">{c.name}</div>
-                      <div className="muted small">
-                        {c.sitePath}
-                        {c.folder ? ` / ${c.folder}` : ""}
-                        {c.role ? ` · הרשאה: ${c.role}` : " · פתוח לכולם"}
-                      </div>
-                    </td>
-                    <td className="num">{fmtNumber(c.docs)}</td>
-                    <td className="num">{fmtNumber(c.chunks)}</td>
-                    <td className="num">
-                      {fmtNumber(pc?.questions || 0)}
-                      {pc?.no_info ? <span className="muted small"> ({pc.no_info} ללא מידע)</span> : null}
-                    </td>
-                    <td>
-                      <SyncCell run={isRunningHere ? { ...running, status: "running" } : c.lastSync} />
-                    </td>
-                    <td>
-                      <button
-                        className="admin-btn"
-                        disabled={busy || !!running}
-                        onClick={() => handleSync(c.id)}
-                        title={running ? "סנכרון אחר רץ כרגע" : "משוך מסמכים חדשים/מעודכנים מ-SharePoint"}
-                      >
-                        סנכרן עכשיו
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="admin-section" ref={questionsRef}>
-        <div className="section-head">
-          <h3>שאלות ב-{days} הימים האחרונים</h3>
-          <div className="admin-controls">
-            {filter.userId && (
-              <button className="filter-chip" onClick={clearUser} title="הסר את סינון המשתמש">
-                משתמש: {filter.userName} ✕
-              </button>
-            )}
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} title="מיון">
-              <option value="ts">החדשות קודם</option>
-              <option value="latency">האיטיות קודם</option>
-            </select>
-            <select
-              value={filter.corpusId}
-              onChange={(e) => setFilter((f) => ({ ...f, corpusId: e.target.value }))}
-            >
-              <option value="">כל המאגרים</option>
-              {corpora.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            <select
-              value={filter.status}
-              onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))}
-            >
-              <option value="">כל הסטטוסים</option>
-              <option value="no_info">רק ללא מידע</option>
-              <option value="error">רק שגיאות</option>
-              <option value="answered">רק שנענו</option>
-            </select>
+      {tab === "corpora" && (
+        <section className="admin-section tab-panel">
+          <div className="section-head">
+            <h3>מאגרים</h3>
+            <ScheduleLine schedule={overview?.schedule} />
           </div>
-        </div>
-        <div className="table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>מתי</th>
-                <th>מי</th>
-                <th>מאגר</th>
-                <th>שאלה</th>
-                <th>סטטוס</th>
-                <th>מקורות</th>
-                <th>זמן</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedQuestions.length === 0 && (
-                <tr><td colSpan="7" className="muted">אין שאלות להצגה.</td></tr>
-              )}
-              {sortedQuestions.map((q, i) => {
-                const st = STATUS_LABEL[q.status] || { icon: "", text: q.status };
-                return (
-                  <tr key={i}>
-                    <td className="nowrap" title={fmtDateTime(q.ts)}>{timeAgo(q.ts)}</td>
-                    <td className="nowrap">{q.user || "—"}</td>
-                    <td className="nowrap">{corpusName(q.corpusId)}</td>
-                    <td className="q-text" title={q.question}>{q.question}</td>
-                    <td className={`status ${q.status}`}><span className="status-icon">{st.icon}</span> {st.text}</td>
-                    <td className="num">{fmtNumber(q.sources)}{q.wholeBook ? " 📚" : ""}</td>
-                    <td className="num">{fmtSeconds(q.latencyMs)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <div className="table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>מאגר</th>
+                  <th>מסמכים</th>
+                  <th>קטעים</th>
+                  <th>שאלות ({days} ימים)</th>
+                  <th>סנכרון אחרון</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(overview?.corpora || []).map((c) => {
+                  const pc = overview?.usage?.per_corpus?.[c.id];
+                  const isRunningHere = running && running.corpusId === c.id;
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <div className="cell-title">{c.name}</div>
+                        <div className="muted small">
+                          {c.sitePath}
+                          {c.folder ? ` / ${c.folder}` : ""}
+                          {c.role ? ` · הרשאה: ${c.role}` : " · פתוח לכולם"}
+                        </div>
+                      </td>
+                      <td className="num">{fmtNumber(c.docs)}</td>
+                      <td className="num">{fmtNumber(c.chunks)}</td>
+                      <td className="num">
+                        {pc?.questions ? (
+                          <button
+                            className="link-btn"
+                            onClick={() => openQuestions({ corpusId: c.id })}
+                            title="השאלות של המאגר הזה"
+                          >
+                            {fmtNumber(pc.questions)}
+                          </button>
+                        ) : "0"}
+                        {pc?.no_info ? <span className="muted small"> ({pc.no_info} ללא מידע)</span> : null}
+                      </td>
+                      <td>
+                        <SyncCell run={isRunningHere ? { ...running, status: "running" } : c.lastSync} />
+                      </td>
+                      <td>
+                        <button
+                          className="admin-btn"
+                          disabled={busy || !!running}
+                          onClick={() => handleSync(c.id)}
+                          title={running ? "סנכרון אחר רץ כרגע" : "משוך מסמכים חדשים/מעודכנים מ-SharePoint"}
+                        >
+                          סנכרן עכשיו
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
-      <StorageSection storage={overview?.storage} />
-
-      {overview && (
-        <div className="muted small admin-foot">
-          אחסון היסטוריה: {overview.historyBackend === "postgres" ? "Postgres" : "SQLite (מקומי)"}
+      {tab === "storage" && (
+        <div className="tab-panel">
+          <StorageSection storage={overview?.storage} />
+          {overview && (
+            <div className="muted small admin-foot">
+              אחסון היסטוריה: {overview.historyBackend === "postgres" ? "Postgres" : "SQLite (מקומי)"}
+            </div>
+          )}
         </div>
       )}
     </div>

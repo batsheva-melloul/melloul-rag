@@ -1508,7 +1508,68 @@ body {
   cursor: pointer;
 }
 .user-row-btn { cursor: pointer; }
-.user-row-btn:hover td { background: var(--brand-soft); }
+.user-row-btn:hover td, .user-row-btn.open td { background: var(--brand-soft); }
+.row-arrow { display: inline-block; transition: transform 0.15s; color: var(--muted); }
+.row-arrow.open { transform: rotate(90deg); }
+.user-detail td { background: var(--surface); padding: 10px 16px 12px 16px; }
+.user-questions { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.user-questions li { display: grid; grid-template-columns: auto auto 1fr auto; gap: 12px; align-items: baseline; font-size: 0.9rem; }
+.uq-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tabs under the KPI tiles: one detail area, no stacking of sections */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin: 4px 0 16px;
+  overflow-x: auto;
+}
+.tab {
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--text); font-weight: 600; border-bottom-color: var(--brand); }
+.tab-count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+.tab-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--brand);
+  animation: tabpulse 1.2s ease-in-out infinite;
+}
+@keyframes tabpulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.tab-panel { animation: fadein 0.15s ease-out; }
+@keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* Text that acts as a link inside tables (user name, question count) */
+.link-btn {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--brand-dark);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.link-btn:hover { text-decoration-style: solid; }
 .stat-label {
   font-size: 0.8rem;
   color: var(--muted);
