@@ -557,6 +557,16 @@ body {
   max-width: 100%;
 }
 
+/* "Open in SharePoint" next to a source pill (only when the backend has a URL) */
+.source-link {
+  font-size: 0.7rem;
+  color: var(--brand-dark);
+  text-decoration: none;
+  opacity: 0.8;
+  padding: 0 6px;
+}
+.source-link:hover { text-decoration: underline; opacity: 1; }
+
 /* Each source is now a clickable pill that opens its excerpt */
 .source-tag {
   display: inline-flex;

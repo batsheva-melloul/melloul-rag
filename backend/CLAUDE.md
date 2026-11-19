@@ -64,6 +64,12 @@ itself — it imports `RagEngine` and exposes it over HTTP.
   SharePoint listing (`RagEngine.remove_missing_sources`); this only happens when the
   listing returned at least one file, so a SharePoint hiccup can never wipe a corpus.
   A renamed file therefore shows up as 1 indexed + 1 removed.
+- **Source links:** every sync stores each file's SharePoint `webUrl`
+  (`store.set_source_urls`, table `source_links` / a JSON sidecar for Chroma). Answer
+  sources carry `url` = that URL + `#page=N` (`rag_core._with_links`) and the UI shows
+  "↗ פתח ב-SharePoint". The app does NOT check SharePoint permissions itself: SharePoint
+  does when the link is opened, so a user without rights to the file sees its
+  access-denied page. Local-PDF corpora have no URL and no link.
 - **Failure alerts (`../alerts.py`):** when a scheduled run fails for any corpus (or
   cannot run because a manual sync never finished) ONE email goes to `ALERT_EMAIL_TO`
   (comma-separated; unset = alerts off) via Microsoft Graph `sendMail`, using the same

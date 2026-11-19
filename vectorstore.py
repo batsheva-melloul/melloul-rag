@@ -69,6 +69,28 @@ class ChromaStore:
         chroma_dir = os.getenv("CHROMA_DIR", "chroma_db")
         self._client = chromadb.PersistentClient(path=chroma_dir)
         self._col = self._client.get_or_create_collection(name=name)
+        # source -> SharePoint web URL, kept in a small JSON sidecar (Chroma
+        # metadata is per chunk; this is per document).
+        self._links_path = os.path.join(chroma_dir, f"{name}.links.json")
+
+    def set_source_urls(self, urls: dict[str, str]) -> None:
+        """Remember where each source document lives (SharePoint webUrl)."""
+        import json
+        links = self.source_urls()
+        links.update({k: v for k, v in urls.items() if v})
+        with open(self._links_path, "w", encoding="utf-8") as f:
+            json.dump(links, f, ensure_ascii=False)
+        self._links_cache = links
+
+    def source_urls(self) -> dict[str, str]:
+        import json
+        if getattr(self, "_links_cache", None) is None:
+            try:
+                with open(self._links_path, encoding="utf-8") as f:
+                    self._links_cache = json.load(f)
+            except (OSError, ValueError):
+                self._links_cache = {}
+        return self._links_cache
 
     def source_version(self, source: str) -> str | None:
         got = self._col.get(where={"source": source}, limit=1)
@@ -271,6 +293,14 @@ class PgVectorStore:
         # Trigram index makes the keyword ILIKE search fast.
         self._run("CREATE INDEX IF NOT EXISTS chunks_trgm "
                   "ON chunks USING gin (text gin_trgm_ops)")
+        # Where each source document lives (its SharePoint web URL), refreshed on
+        # every sync, so an answer's sources can link straight to the file.
+        self._run("""CREATE TABLE IF NOT EXISTS source_links (
+                        corpus_id text NOT NULL,
+                        source    text NOT NULL,
+                        url       text NOT NULL,
+                        PRIMARY KEY (corpus_id, source)
+                     )""")
         # NOTE: the HNSW vector index is built by the migration script AFTER the
         # bulk load (building it on an empty table then inserting is much slower).
 
@@ -348,6 +378,25 @@ class PgVectorStore:
             self._sources_cache = sorted(r[0] for r in rows)
             self._sources_at = time.time()
         return self._sources_cache
+
+    def set_source_urls(self, urls: dict[str, str]) -> None:
+        """Upsert source -> SharePoint web URL for every listed document."""
+        rows = [(self.corpus_id, s, u) for s, u in urls.items() if u]
+        if rows:
+            self._run("INSERT INTO source_links (corpus_id, source, url) VALUES (%s, %s, %s) "
+                      "ON CONFLICT (corpus_id, source) DO UPDATE SET url=EXCLUDED.url",
+                      rows, many=True)
+        self._links_cache = None
+
+    def source_urls(self) -> dict[str, str]:
+        """source -> web URL (cached like sources(), other workers refresh by TTL)."""
+        if getattr(self, "_links_cache", None) is None or \
+                time.time() - self._links_at > SOURCES_TTL_S:
+            rows = self._run("SELECT source, url FROM source_links WHERE corpus_id=%s",
+                             (self.corpus_id,), fetch="all") or []
+            self._links_cache = {r[0]: r[1] for r in rows}
+            self._links_at = time.time()
+        return self._links_cache
 
     def source_chunks(self, source: str, cap: int = 4000) -> list[dict]:
         """All chunks of one source document, ordered by page (for whole-book mode)."""

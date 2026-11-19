@@ -199,6 +199,9 @@ class Source(BaseModel):
     source: str
     page_number: int
     text: str
+    # SharePoint web URL of the document at that page (None for local PDFs).
+    # SharePoint enforces who may open it.
+    url: str | None = None
 
 
 class AskResponse(BaseModel):

@@ -40,6 +40,7 @@ const STYLES = `
   .dl-sources { list-style: none; padding: 0; margin: 0; }
   .dl-source { border: 1px solid #e6e8ec; border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
   .dl-source-name { font-weight: 600; }
+  .dl-source-link { font-weight: 400; font-size: 0.85rem; margin-inline-start: 8px; color: #4a5db0; }
   .dl-excerpt { margin: 8px 0 0; padding-inline-start: 12px; border-inline-start: 3px solid #d9dce2;
                 color: #4b5563; font-size: 0.94rem; white-space: pre-wrap; }
   .dl-meta { color: #8a90a0; font-size: 0.8rem; margin: 0 0 22px; }
@@ -108,10 +109,14 @@ function sourcesHtml(sources) {
   const items = sources
     .map((s) => {
       const name = `📄 ${esc(s.source)} · עמוד ${esc(s.page_number)}`;
+      // Link to the page in SharePoint (opens only for users SharePoint allows).
+      const link = s.url && /^https:\/\//.test(s.url)
+        ? ` <a class="dl-source-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">↗ פתח ב-SharePoint</a>`
+        : "";
       const excerpt = s.text
         ? `<blockquote class="dl-excerpt">${esc(s.text)}</blockquote>`
         : "";
-      return `<li class="dl-source"><div class="dl-source-name">${name}</div>${excerpt}</li>`;
+      return `<li class="dl-source"><div class="dl-source-name">${name}${link}</div>${excerpt}</li>`;
     })
     .join("");
   return (

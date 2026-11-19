@@ -111,6 +111,7 @@ def list_pdf_items(token: str, site_id: str, folder: str | None = None) -> list[
                     "name": item["name"],
                     "cTag": item.get("cTag", ""),  # changes when content changes
                     "size": item.get("size", 0),
+                    "webUrl": item.get("webUrl", ""),  # opens the file in SharePoint
                 })
 
     if folder:
@@ -167,6 +168,14 @@ def sync_corpus(hostname: str, corpus: dict, engine: RagEngine) -> dict:
     items = list_pdf_items(get_valid_token(), site_id, corpus.get("folder"))
     logger.info("Found %d PDF file(s)%s", len(items),
                 f" in folder '{corpus['folder']}'" if corpus.get("folder") else "")
+
+    # Remember each file's SharePoint URL (every run, changed or not: a file that
+    # was moved keeps its name but gets a new URL). The answer's source list links
+    # to it; SharePoint itself decides whether the clicking user may open it.
+    try:
+        engine.store.set_source_urls({i["name"]: i.get("webUrl", "") for i in items})
+    except Exception:
+        logger.exception("could not store source links (answers will have no links)")
 
     # Counters shown on the admin page:
     #   indexed    - new or changed files that were embedded

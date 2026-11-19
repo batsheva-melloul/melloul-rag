@@ -546,6 +546,30 @@ def _sample_evenly(items: list, k: int) -> list:
     return [items[int(i * step)] for i in range(k)]
 
 
+def _with_links(chunks: list[dict], store) -> list[dict]:
+    """
+    Copy the source chunks the API returns, adding `url`: the document's
+    SharePoint web URL with a page fragment, so the UI can offer "open in
+    SharePoint" at the cited page. Access is enforced by SharePoint when the
+    link is opened — a user without rights to the file gets its access-denied
+    page, never the book. Sources without a stored URL simply get none.
+    """
+    try:
+        links = store.source_urls() if hasattr(store, "source_urls") else {}
+    except Exception:
+        logger.exception("source links unavailable")
+        links = {}
+    out = []
+    for c in chunks:
+        url = links.get(c.get("source"))
+        page = c.get("page_number")
+        item = {"source": c["source"], "page_number": page, "text": c["text"]}
+        if url:
+            item["url"] = f"{url}#page={page}" if page else url
+        out.append(item)
+    return out
+
+
 def retrieve_whole_book(store, source: str) -> list[dict]:
     """
     WHOLE-BOOK mode: instead of the top-K most similar chunks, take a sample spread
@@ -806,7 +830,8 @@ class RagEngine:
         # the user is not told a non-answer rests on 10 excerpts.
         return {
             "answer": answer_text,
-            "sources": [] if looks_like_no_info(answer_text) else _sample_evenly(prep["chunks"], 10),
+            "sources": [] if looks_like_no_info(answer_text)
+                       else _with_links(_sample_evenly(prep["chunks"], 10), self.store),
             "whole_book": prep["whole_book"],
         }
 
@@ -843,7 +868,8 @@ class RagEngine:
         no_info = looks_like_no_info("".join(head))
         yield {
             "type": "done",
-            "sources": [] if no_info else _sample_evenly(prep["chunks"], 10),
+            "sources": [] if no_info
+                       else _with_links(_sample_evenly(prep["chunks"], 10), self.store),
             "whole_book": prep["whole_book"],
         }
 

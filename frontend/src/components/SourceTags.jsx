@@ -77,6 +77,20 @@ function SourceTags({ sources, answer }) {
                   📄 {src.source} · עמוד {src.page_number}
                   <span className={`source-arrow ${isOpen ? "open" : ""}`}>▾</span>
                 </button>
+                {/* Link to the file in SharePoint at the cited page. SharePoint
+                    checks the clicking user's own permissions — someone without
+                    access to the file gets its access-denied page. */}
+                {src.url && (
+                  <a
+                    className="source-link"
+                    href={src.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="פתח את העמוד במסמך המקורי ב-SharePoint (למורשים בלבד)"
+                  >
+                    ↗ פתח ב-SharePoint
+                  </a>
+                )}
 
                 {isOpen && src.text && (
                   <blockquote className="source-excerpt">
