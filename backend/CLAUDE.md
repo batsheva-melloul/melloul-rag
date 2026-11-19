@@ -51,6 +51,11 @@ itself — it imports `RagEngine` and exposes it over HTTP.
   `SHAREPOINT_HOSTNAME` is unset (local dev). **Production needs "Always On"** on the
   App Service, otherwise the process is asleep at night. Runs appear in the admin page
   as "אוטומטי"; the overview returns `schedule.nextRunAt`.
+  All corpora are folders of ONE SharePoint site (`corpora.py`, exact folder names —
+  a rename in SharePoint = nightly 404 until the name is updated there). PDFs over
+  `MAX_PDF_MB` (default 150) are skipped without downloading: a file is parsed fully
+  in memory and the B1 plan cannot hold a 400 MB scanned book (which has no text
+  layer anyway).
 - **Failure alerts (`../alerts.py`):** when a scheduled run fails for any corpus (or
   cannot run because a manual sync never finished) ONE email goes to `ALERT_EMAIL_TO`
   (comma-separated; unset = alerts off) via Microsoft Graph `sendMail`, using the same

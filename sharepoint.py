@@ -39,6 +39,12 @@ GRAPH = "https://graph.microsoft.com/v1.0"
 # How often a running sync proves it is alive (must be well under
 # history_store.STALE_SYNC_MS).
 HEARTBEAT_S = 60
+# PDFs above this size are NOT downloaded. A file is held fully in memory while
+# it is parsed, and the B1 App Service has ~1.7 GB for all workers — a 400 MB
+# scanned book (no text layer anyway) would be re-downloaded every night and
+# could OOM the process. Scanned originals should be OCR'd and re-uploaded;
+# a real text-layer PDF of a whole book is a few MB.
+MAX_PDF_MB = float(os.environ.get("MAX_PDF_MB", "150"))
 
 
 def get_app_token() -> str:
@@ -104,6 +110,7 @@ def list_pdf_items(token: str, site_id: str, folder: str | None = None) -> list[
                     "id": item["id"],
                     "name": item["name"],
                     "cTag": item.get("cTag", ""),  # changes when content changes
+                    "size": item.get("size", 0),
                 })
 
     if folder:
@@ -169,6 +176,14 @@ def sync_corpus(hostname: str, corpus: dict, engine: RagEngine) -> dict:
         # Skip unchanged files WITHOUT downloading them (lets a re-run resume).
         if engine.is_current(source, version):
             logger.info("[%s] unchanged — skipping (no download)", source)
+            skipped += 1
+            continue
+
+        size_mb = item.get("size", 0) / (1024 * 1024)
+        if size_mb > MAX_PDF_MB:
+            logger.warning("[%s] %.0f MB exceeds MAX_PDF_MB=%.0f — not downloaded "
+                           "(scanned original? OCR it and re-upload)",
+                           source, size_mb, MAX_PDF_MB)
             skipped += 1
             continue
 

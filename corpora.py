@@ -11,23 +11,39 @@ To add a chatbot: add one entry here (and later, sync its SharePoint site).
     role      - Entra App Role required to access it (Part B). None = open to all.
 """
 
+# All corpora live in ONE SharePoint site (sites/MAGAR) since 2026-11-15, one
+# top-level folder each ("מאגר מידע - <subject>"). The old per-corpus site
+# sites/MagarMIsim is empty and no longer used.
+#
+# "folder" = sync ONLY that subfolder of the site's document library; omit it to
+# sync the whole library. Folder names are matched EXACTLY, so a rename in
+# SharePoint breaks the nightly sync with a 404 (happened 2026-10-14 and again
+# 2026-11-15) — when that happens, update the name here.
 CORPORA = [
     {
         "id": "magar",
         "name": "מאגר פילוסופיה",
         "site_path": "sites/MAGAR",
-        # Sync ONLY this subfolder of the site's document library (the OCR'd
-        # books with a real text layer). Omit "folder" to sync the whole library.
-        # NOTE: the folder was renamed in SharePoint on ~2026-10-14 (it used to be
-        # "ספרים OCR"); the nightly sync 404'd for three weeks until this was updated.
-        "folder": "ספרי פילוסופיה OCR",
+        # The OCR'd books (real text layer). The sibling folder without "OCR"
+        # holds scanned originals that pypdf cannot read — not synced on purpose.
+        "folder": "מאגר מידע - פילוסופיה OCR",
         "role": "magar",  # only users assigned the "magar" App Role can access
     },
     {
         "id": "misim",
         "name": "מאגר מיסים",
-        "site_path": "sites/MagarMIsim",
+        "site_path": "sites/MAGAR",
+        "folder": "מאגר מידע - מיסים",
         "role": "misim",  # only users assigned the "misim" App Role can access
+    },
+    {
+        "id": "avoda",
+        "name": "מאגר דיני עבודה וביטוח לאומי",
+        "site_path": "sites/MAGAR",
+        "folder": "מאגר מידע - דיני עבודה וביטוח לאומי",
+        # Needs an "avoda" App Role on the app registration (Entra) assigned to
+        # the users who may read it. Set to None to open it to everyone signed in.
+        "role": "avoda",
     },
 ]
 
