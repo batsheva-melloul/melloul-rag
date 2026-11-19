@@ -511,9 +511,19 @@ def admin_overview(days: int = Query(7, ge=1, le=365),
 @app.get("/admin/questions")
 def admin_questions(limit: int = Query(50, ge=1, le=500), corpus_id: str | None = None,
                     status: str | None = Query(None, pattern="^(answered|no_info|error)$"),
+                    user_id: str | None = Query(None, max_length=200),
+                    days: int | None = Query(None, ge=1, le=365),
                     user: dict = Depends(require_admin)) -> list[dict]:
-    """Most recent questions (optionally one corpus / one status)."""
-    return history.recent_questions(limit=limit, corpus_id=corpus_id, status=status)
+    """Most recent questions (optionally one corpus / status / user / period)."""
+    return history.recent_questions(limit=limit, corpus_id=corpus_id, status=status,
+                                    user_id=user_id, days=days)
+
+
+@app.get("/admin/users")
+def admin_users(days: int = Query(7, ge=1, le=365),
+                user: dict = Depends(require_admin)) -> list[dict]:
+    """Who used the assistant in the period (the 'active users' tile drill-down)."""
+    return history.active_users(days)
 
 
 @app.get("/admin/sync/status")

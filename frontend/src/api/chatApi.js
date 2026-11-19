@@ -198,11 +198,21 @@ export function fetchAdminOverview(days = 7, accessToken = "") {
   return json(`/admin/overview?days=${days}`, { accessToken });
 }
 
-export function fetchAdminQuestions({ limit = 100, corpusId = "", status = "" } = {}, accessToken = "") {
+export function fetchAdminQuestions(
+  { limit = 100, corpusId = "", status = "", userId = "", days = 0 } = {},
+  accessToken = "",
+) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (corpusId) params.set("corpus_id", corpusId);
   if (status) params.set("status", status);
+  if (userId) params.set("user_id", userId);
+  if (days) params.set("days", String(days));
   return json(`/admin/questions?${params}`, { accessToken });
+}
+
+// Who asked questions in the period (name, counts, corpora, last question).
+export function fetchAdminUsers(days = 7, accessToken = "") {
+  return json(`/admin/users?days=${days}`, { accessToken });
 }
 
 export function startAdminSync(corpusId, accessToken = "") {

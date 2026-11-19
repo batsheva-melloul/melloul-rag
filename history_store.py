@@ -218,20 +218,50 @@ class HistoryStore:
             logger.exception("question_log insert failed")
 
     def recent_questions(self, limit: int = 50, corpus_id: str | None = None,
-                         status: str | None = None) -> list[dict]:
+                         status: str | None = None, user_id: str | None = None,
+                         days: int | None = None) -> list[dict]:
+        """Newest questions first; optional corpus / status / user / period filters."""
         where, params = [], []
         if corpus_id:
             where.append("corpus_id = ?"); params.append(corpus_id)
         if status:
             where.append("status = ?"); params.append(status)
-        sql = ("SELECT ts, user_name, corpus_id, question, status, sources, whole_book, latency_ms "
-               "FROM question_log" + (" WHERE " + " AND ".join(where) if where else "") +
+        if user_id:
+            where.append("user_id = ?"); params.append(user_id)
+        if days:
+            where.append("ts >= ?"); params.append(now_ms() - int(days) * 86400 * 1000)
+        sql = ("SELECT ts, user_name, corpus_id, question, status, sources, whole_book, "
+               "latency_ms, user_id FROM question_log" +
+               (" WHERE " + " AND ".join(where) if where else "") +
                " ORDER BY ts DESC LIMIT ?")
         params.append(int(limit))
         rows = self._run(sql, tuple(params), fetch="all") or []
         return [{"ts": r[0], "user": r[1], "corpusId": r[2], "question": r[3],
                  "status": r[4], "sources": r[5], "wholeBook": bool(r[6]),
-                 "latencyMs": r[7]} for r in rows]
+                 "latencyMs": r[7], "userId": r[8]} for r in rows]
+
+    def active_users(self, days: int = 7) -> list[dict]:
+        """
+        Who asked questions in the last `days` days, busiest first: name, how many
+        questions (and how many got no answer / an error), which corpora they used
+        and when they last asked. Drives the "active users" drill-down on the
+        admin page.
+        """
+        since = now_ms() - int(days) * 86400 * 1000
+        corpora_agg = ("string_agg(DISTINCT corpus_id, ',')" if self.backend == "postgres"
+                       else "group_concat(DISTINCT corpus_id)")
+        rows = self._run(
+            f"SELECT user_id, MAX(user_name), COUNT(*), "
+            f"SUM(CASE WHEN status = 'no_info' THEN 1 ELSE 0 END), "
+            f"SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), "
+            f"MAX(ts), AVG(latency_ms), {corpora_agg} "
+            f"FROM question_log WHERE ts >= ? GROUP BY user_id ORDER BY COUNT(*) DESC, MAX(ts) DESC",
+            (since,), fetch="all") or []
+        return [{"userId": r[0], "user": r[1], "questions": int(r[2]),
+                 "noInfo": int(r[3] or 0), "errors": int(r[4] or 0), "lastTs": r[5],
+                 "avgLatencyMs": int(r[6] or 0),
+                 "corpora": sorted((r[7] or "").split(",")) if r[7] else []}
+                for r in rows]
 
     def usage_stats(self, days: int = 7) -> dict:
         """Totals for the last `days` days, overall and per corpus."""

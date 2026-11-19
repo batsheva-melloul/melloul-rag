@@ -44,7 +44,9 @@ itself — it imports `RagEngine` and exposes it over HTTP.
 - **Admin:** `is_admin(user)` = the `admin` App Role in the token OR the email is in
   the `ADMIN_USERS` env var (comma-separated). DEMO_MODE makes everyone admin.
   `GET /admin/overview` (per-corpus docs/chunks/last sync + usage totals),
-  `GET /admin/questions`, `GET /admin/sync/status`, `POST /admin/sync?corpus_id=`
+  `GET /admin/questions` (filters: `corpus_id`, `status`, `user_id`, `days`),
+  `GET /admin/users?days=` (per-person counts — the "active users" tile drill-down),
+  `GET /admin/sync/status`, `POST /admin/sync?corpus_id=`
   (runs `sharepoint.sync_corpus_recorded` in a background thread with this process's
   engine; one at a time; `sync_runs` rows make "last sync" visible, also for CLI runs).
 - **Nightly sync:** `scheduler.py` runs the same sync for every corpus at

@@ -4,6 +4,7 @@ import { getAccessToken } from "../auth/getToken";
 import {
   fetchAdminOverview,
   fetchAdminQuestions,
+  fetchAdminUsers,
   startAdminSync,
   fetchAdminSyncStatus,
 } from "../api/chatApi";
@@ -119,13 +120,27 @@ function StorageSection({ storage }) {
   );
 }
 
-function StatTile({ label, value, hint }) {
-  return (
-    <div className="stat-tile">
+// A KPI tile. With `onClick` it becomes a button that opens its details
+// (the people behind "active users", the questions behind a count...).
+function StatTile({ label, value, hint, onClick, active, cta }) {
+  const body = (
+    <>
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
       {hint && <div className="stat-hint">{hint}</div>}
-    </div>
+      {onClick && <div className="stat-cta">{cta || "לחצו לפירוט ↓"}</div>}
+    </>
+  );
+  if (!onClick) return <div className="stat-tile">{body}</div>;
+  return (
+    <button
+      type="button"
+      className={`stat-tile clickable ${active ? "active" : ""}`}
+      onClick={onClick}
+      aria-pressed={!!active}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -192,10 +207,18 @@ function AdminPanel({ corpora }) {
   const [days, setDays] = useState(7);
   const [overview, setOverview] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const [filter, setFilter] = useState({ corpusId: "", status: "" });
+  const [users, setUsers] = useState([]);
+  // The question log follows the same period as the tiles, so clicking a tile
+  // shows exactly the questions it counted. userId/userName narrow it to one
+  // person (set from the users list).
+  const [filter, setFilter] = useState({ corpusId: "", status: "", userId: "", userName: "" });
+  const [sortBy, setSortBy] = useState("ts"); // "ts" (newest) | "latency" (slowest)
+  const [showUsers, setShowUsers] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const pollRef = useRef(null);
+  const usersRef = useRef(null);
+  const questionsRef = useRef(null);
 
   const token = useCallback(() => getAccessToken(instance, accounts), [instance, accounts]);
 
@@ -203,16 +226,45 @@ function AdminPanel({ corpora }) {
     setError("");
     try {
       const t = await token();
-      const [ov, qs] = await Promise.all([
+      const [ov, qs, us] = await Promise.all([
         fetchAdminOverview(days, t),
-        fetchAdminQuestions({ limit: 100, corpusId: filter.corpusId, status: filter.status }, t),
+        fetchAdminQuestions(
+          { limit: 200, corpusId: filter.corpusId, status: filter.status, userId: filter.userId, days },
+          t,
+        ),
+        fetchAdminUsers(days, t),
       ]);
       setOverview(ov);
       setQuestions(qs);
+      setUsers(us);
     } catch (e) {
       setError("לא ניתן לטעון את נתוני הניהול. ייתכן שאין לך הרשאת ניהול.");
     }
-  }, [days, filter.corpusId, filter.status, token]);
+  }, [days, filter.corpusId, filter.status, filter.userId, token]);
+
+  // Tile clicks: show the detail behind the number and scroll to it.
+  const scrollTo = (ref) => setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  function showQuestions(status, sort = "ts") {
+    setFilter((f) => ({ ...f, status }));
+    setSortBy(sort);
+    scrollTo(questionsRef);
+  }
+  function toggleUsers() {
+    const next = !showUsers;
+    setShowUsers(next);
+    if (next) scrollTo(usersRef);
+  }
+  function showUserQuestions(u) {
+    setFilter((f) => ({ ...f, status: "", userId: u.userId, userName: u.user || u.userId }));
+    setSortBy("ts");
+    scrollTo(questionsRef);
+  }
+  const clearUser = () => setFilter((f) => ({ ...f, userId: "", userName: "" }));
+
+  const sortedQuestions =
+    sortBy === "latency"
+      ? [...questions].sort((a, b) => (b.latencyMs || 0) - (a.latencyMs || 0))
+      : questions;
 
   useEffect(() => {
     load();
@@ -274,16 +326,88 @@ function AdminPanel({ corpora }) {
       {error && <div className="admin-error">{error}</div>}
 
       <section className="stat-row">
-        <StatTile label={`שאלות ב-${days} הימים האחרונים`} value={fmtNumber(usage?.questions)} />
+        <StatTile
+          label={`שאלות ב-${days} הימים האחרונים`}
+          value={fmtNumber(usage?.questions)}
+          onClick={() => showQuestions("")}
+          active={!filter.status && !filter.userId && sortBy === "ts"}
+          cta="כל השאלות ↓"
+        />
         <StatTile
           label="ללא תשובה במסמכים"
           value={fmtNumber(usage?.no_info)}
           hint={usage?.questions ? `${noInfoPct}% מהשאלות` : ""}
+          onClick={() => showQuestions("no_info")}
+          active={filter.status === "no_info"}
+          cta="אילו שאלות? ↓"
         />
-        <StatTile label="שגיאות" value={fmtNumber(usage?.errors)} />
-        <StatTile label="משתמשים פעילים" value={fmtNumber(usage?.active_users)} />
-        <StatTile label="זמן תשובה ממוצע" value={fmtSeconds(usage?.avg_latency_ms)} />
+        <StatTile
+          label="שגיאות"
+          value={fmtNumber(usage?.errors)}
+          onClick={() => showQuestions("error")}
+          active={filter.status === "error"}
+          cta="אילו שאלות? ↓"
+        />
+        <StatTile
+          label="משתמשים פעילים"
+          value={fmtNumber(usage?.active_users)}
+          onClick={toggleUsers}
+          active={showUsers}
+          cta={showUsers ? "הסתר ↑" : "מי? ↓"}
+        />
+        <StatTile
+          label="זמן תשובה ממוצע"
+          value={fmtSeconds(usage?.avg_latency_ms)}
+          onClick={() => showQuestions("", "latency")}
+          active={sortBy === "latency"}
+          cta="האיטיות ביותר ↓"
+        />
       </section>
+
+      {showUsers && (
+        <section className="admin-section" ref={usersRef}>
+          <div className="section-head">
+            <h3>משתמשים פעילים ב-{days} הימים האחרונים</h3>
+            <span className="muted small">לחיצה על שורה מציגה את השאלות של אותו משתמש</span>
+          </div>
+          <div className="table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>מי</th>
+                  <th>שאלות</th>
+                  <th>ללא מידע</th>
+                  <th>שגיאות</th>
+                  <th>מאגרים</th>
+                  <th>זמן ממוצע</th>
+                  <th>שאלה אחרונה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.length === 0 && (
+                  <tr><td colSpan="7" className="muted">אין משתמשים בתקופה הזו.</td></tr>
+                )}
+                {users.map((u) => (
+                  <tr
+                    key={u.userId}
+                    className={`user-row-btn ${filter.userId === u.userId ? "active" : ""}`}
+                    onClick={() => showUserQuestions(u)}
+                    title="הצג את השאלות של המשתמש"
+                  >
+                    <td className="nowrap cell-title">{u.user || u.userId}</td>
+                    <td className="num">{fmtNumber(u.questions)}</td>
+                    <td className="num">{fmtNumber(u.noInfo)}</td>
+                    <td className="num">{fmtNumber(u.errors)}</td>
+                    <td>{(u.corpora || []).map(corpusName).join(", ") || "—"}</td>
+                    <td className="num">{fmtSeconds(u.avgLatencyMs)}</td>
+                    <td className="nowrap" title={fmtDateTime(u.lastTs)}>{timeAgo(u.lastTs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="admin-section">
         <div className="section-head">
@@ -343,10 +467,19 @@ function AdminPanel({ corpora }) {
         </div>
       </section>
 
-      <section className="admin-section">
+      <section className="admin-section" ref={questionsRef}>
         <div className="section-head">
-          <h3>שאלות אחרונות</h3>
+          <h3>שאלות ב-{days} הימים האחרונים</h3>
           <div className="admin-controls">
+            {filter.userId && (
+              <button className="filter-chip" onClick={clearUser} title="הסר את סינון המשתמש">
+                משתמש: {filter.userName} ✕
+              </button>
+            )}
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} title="מיון">
+              <option value="ts">החדשות קודם</option>
+              <option value="latency">האיטיות קודם</option>
+            </select>
             <select
               value={filter.corpusId}
               onChange={(e) => setFilter((f) => ({ ...f, corpusId: e.target.value }))}
@@ -381,10 +514,10 @@ function AdminPanel({ corpora }) {
               </tr>
             </thead>
             <tbody>
-              {questions.length === 0 && (
+              {sortedQuestions.length === 0 && (
                 <tr><td colSpan="7" className="muted">אין שאלות להצגה.</td></tr>
               )}
-              {questions.map((q, i) => {
+              {sortedQuestions.map((q, i) => {
                 const st = STATUS_LABEL[q.status] || { icon: "", text: q.status };
                 return (
                   <tr key={i}>
