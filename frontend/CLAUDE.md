@@ -53,6 +53,14 @@ conversations and ones whose answer is still streaming are not saved yet.
 user is an admin (button in the header). The panel only reads `/admin/*`; the server
 decides who is an admin (see backend/CLAUDE.md, `ADMIN_USERS`).
 
+Layout: KPI tiles on top, then ONE tabbed detail area (שאלות / משתמשים / מאגרים /
+אחסון). Tiles are buttons: each switches to the matching tab with its filter preset
+(e.g. "ללא תשובה" → questions tab filtered to `no_info`, "משתמשים פעילים" → users tab),
+so nothing stacks or scrolls. The question log follows the tiles' period (7/30 days).
+The users tab expands a row inline to that person's latest questions; user names and
+per-corpus counts are links into the question log. The selected tab is kept in
+`localStorage` (`rag_admin_tab`).
+
 ## Sign-in & tokens
 
 Microsoft Entra ID via MSAL (`@azure/msal-browser` + `@azure/msal-react`). All token
