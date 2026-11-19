@@ -58,7 +58,12 @@ itself — it imports `RagEngine` and exposes it over HTTP.
   a rename in SharePoint = nightly 404 until the name is updated there). PDFs over
   `MAX_PDF_MB` (default 150) are skipped without downloading: a file is parsed fully
   in memory and the B1 plan cannot hold a 400 MB scanned book (which has no text
-  layer anyway).
+  layer anyway). A sync run reports `indexed / skipped (unchanged) / unreadable
+  (too large or no text layer — NOT in the index, re-checked every run) / removed`.
+  **Removed** = books deleted from the index because they are no longer in the
+  SharePoint listing (`RagEngine.remove_missing_sources`); this only happens when the
+  listing returned at least one file, so a SharePoint hiccup can never wipe a corpus.
+  A renamed file therefore shows up as 1 indexed + 1 removed.
 - **Failure alerts (`../alerts.py`):** when a scheduled run fails for any corpus (or
   cannot run because a manual sync never finished) ONE email goes to `ALERT_EMAIL_TO`
   (comma-separated; unset = alerts off) via Microsoft Graph `sendMail`, using the same

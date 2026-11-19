@@ -148,9 +148,19 @@ function SyncCell({ run }) {
       </span>
     );
   }
+  // Files that are in SharePoint but could not be indexed (scanned without a text
+  // layer, or over the size limit) and books deleted because they left SharePoint.
+  const unreadable = run.unreadable || 0;
+  const removed = run.removed || 0;
   return (
     <span className="sync-state ok" title={fmtDateTime(run.finishedAt)}>
       ✓ {timeAgo(run.finishedAt)} · {fmtNumber(run.indexed)} חדשים/עודכנו, {fmtNumber(run.skipped)} ללא שינוי
+      {removed > 0 && <>, {fmtNumber(removed)} הוסרו</>}
+      {unreadable > 0 && (
+        <span className="sync-warn" title="קבצים סרוקים בלי שכבת טקסט או גדולים מדי — לא נכנסו למאגר. יש להעלות גרסה עם OCR.">
+          , {fmtNumber(unreadable)} לא נקראו (סרוק / גדול מדי)
+        </span>
+      )}
       {who && <span className="muted small"> · {who}</span>}
     </span>
   );

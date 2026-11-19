@@ -1562,6 +1562,7 @@ body {
 .sync-state.ok { color: var(--text); }
 .sync-state.running { color: var(--text); }
 .sync-state.error { color: #ec835a; }
+.sync-warn { color: #ec835a; }   /* files SharePoint has but the index cannot read */
 
 .admin-foot {
   margin-top: 8px;

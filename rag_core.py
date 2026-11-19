@@ -707,6 +707,18 @@ class RagEngine:
         """Index a PDF from in-memory bytes (no file saved to disk)."""
         return index_pdf_bytes(self.store, self.llm, source, version, data)
 
+    def remove_missing_sources(self, present: set[str]) -> list[str]:
+        """
+        Delete every indexed source that is NOT in `present` (the filenames the
+        sync just listed in SharePoint). Returns the names removed. Reads the
+        source list fresh (not the cached copy) so a book indexed moments ago by
+        another worker is never mistaken for a missing one.
+        """
+        stale = [s for s in self.store.sources(fresh=True) if s not in present]
+        for source in stale:
+            self.store.delete_source(source)
+        return stale
+
     def _prepare(self, question: str, history: list[dict] | None,
                  directive: str, comprehensive: bool,
                  books: list[str] | None) -> dict:

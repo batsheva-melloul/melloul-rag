@@ -138,10 +138,13 @@ class HistoryStore:
                   "ON sync_runs (corpus_id, started_at)")
         # Databases created before heartbeat_at existed: add the column. SQLite has
         # no "ADD COLUMN IF NOT EXISTS", so a duplicate-column error means it is there.
-        try:
-            self._run("ALTER TABLE sync_runs ADD COLUMN heartbeat_at bigint")
-        except Exception:
-            pass
+        for column in ("heartbeat_at bigint",
+                       "unreadable integer",   # scanned / too-large files not indexed
+                       "removed integer"):     # books deleted (gone from SharePoint)
+            try:
+                self._run(f"ALTER TABLE sync_runs ADD COLUMN {column}")
+            except Exception:
+                pass
         # One row per schedule: which slot (scheduled time, epoch ms) was last
         # claimed. Lets several web workers agree on who runs the nightly sync.
         self._run("""CREATE TABLE IF NOT EXISTS sync_schedule (
@@ -312,24 +315,27 @@ class HistoryStore:
             logger.exception("sync heartbeat failed")
 
     def finish_sync_run(self, run_id: int, *, status: str, total: int = 0,
-                        indexed: int = 0, skipped: int = 0, error: str | None = None) -> None:
+                        indexed: int = 0, skipped: int = 0, unreadable: int = 0,
+                        removed: int = 0, error: str | None = None) -> None:
         self._run("UPDATE sync_runs SET finished_at = ?, status = ?, total = ?, indexed = ?, "
-                  "skipped = ?, error = ? WHERE id = ?",
-                  (now_ms(), status, total, indexed, skipped, (error or "")[:1000] or None, run_id))
+                  "skipped = ?, unreadable = ?, removed = ?, error = ? WHERE id = ?",
+                  (now_ms(), status, total, indexed, skipped, unreadable, removed,
+                   (error or "")[:1000] or None, run_id))
 
     def last_sync_runs(self) -> dict[str, dict]:
         """The most recent run per corpus, keyed by corpus id."""
         self.abandon_running_syncs()  # a dead run must not show as "running" forever
         rows = self._run("SELECT corpus_id, trigger_by, started_at, finished_at, status, total, "
-                         "indexed, skipped, error FROM sync_runs ORDER BY started_at DESC",
-                         fetch="all") or []
+                         "indexed, skipped, error, unreadable, removed FROM sync_runs "
+                         "ORDER BY started_at DESC", fetch="all") or []
         out: dict[str, dict] = {}
         for r in rows:
             if r[0] in out:
                 continue
             out[r[0]] = {"corpusId": r[0], "triggerBy": r[1], "startedAt": r[2],
                          "finishedAt": r[3], "status": r[4], "total": r[5],
-                         "indexed": r[6], "skipped": r[7], "error": r[8]}
+                         "indexed": r[6], "skipped": r[7], "error": r[8],
+                         "unreadable": r[9] or 0, "removed": r[10] or 0}
         return out
 
     def running_sync(self) -> dict | None:

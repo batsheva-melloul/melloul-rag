@@ -168,7 +168,15 @@ def sync_corpus(hostname: str, corpus: dict, engine: RagEngine) -> dict:
     logger.info("Found %d PDF file(s)%s", len(items),
                 f" in folder '{corpus['folder']}'" if corpus.get("folder") else "")
 
-    indexed, skipped = 0, 0
+    # Counters shown on the admin page:
+    #   indexed    - new or changed files that were embedded
+    #   skipped    - unchanged files (not even downloaded)
+    #   unreadable - files that cannot be indexed: over MAX_PDF_MB, or no text
+    #                layer (scanned). They are NOT in the index and will be
+    #                re-examined every run until someone uploads an OCR'd copy.
+    #   removed    - books deleted from the index because they are no longer in
+    #                SharePoint (a deleted/renamed/moved file must stop answering)
+    indexed, skipped, unreadable = 0, 0, []
     for item in items:
         source = item["name"]
         version = item["cTag"]
@@ -184,7 +192,7 @@ def sync_corpus(hostname: str, corpus: dict, engine: RagEngine) -> dict:
             logger.warning("[%s] %.0f MB exceeds MAX_PDF_MB=%.0f — not downloaded "
                            "(scanned original? OCR it and re-upload)",
                            source, size_mb, MAX_PDF_MB)
-            skipped += 1
+            unreadable.append(source)
             continue
 
         logger.info("[%s] downloading + indexing...", source)
@@ -196,10 +204,30 @@ def sync_corpus(hostname: str, corpus: dict, engine: RagEngine) -> dict:
                 data = download_bytes(get_valid_token(force=True), site_id, item["id"])
             else:
                 raise
-        engine.index_bytes(source, version, data)
-        indexed += 1
+        if engine.index_bytes(source, version, data) > 0:
+            indexed += 1
+        else:
+            unreadable.append(source)  # no text layer — index_bytes already warned
 
-    summary = {"total": len(items), "indexed": indexed, "skipped": skipped}
+    # Books that are in the index but no longer in SharePoint: delete them, so a
+    # file someone removed (or renamed — the new name is indexed as a new book)
+    # stops being quoted. Only when the listing returned something: an empty
+    # listing is far more likely a SharePoint hiccup than a deliberately emptied
+    # library, and must never wipe a corpus.
+    removed: list[str] = []
+    if items:
+        removed = engine.remove_missing_sources({item["name"] for item in items})
+        for name in removed:
+            logger.info("[%s] no longer in SharePoint — removed from the index", name)
+    elif engine.store.sources():
+        logger.warning("SharePoint listed 0 files but the index has books — "
+                       "keeping them (not treating an empty listing as deletions)")
+
+    if unreadable:
+        logger.warning("%d file(s) could not be indexed (scanned / too large): %s",
+                       len(unreadable), "; ".join(unreadable))
+    summary = {"total": len(items), "indexed": indexed, "skipped": skipped,
+               "unreadable": len(unreadable), "removed": len(removed)}
     logger.info("Corpus '%s' done: %s", corpus["id"], summary)
     return summary
 

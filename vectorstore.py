@@ -114,13 +114,14 @@ class ChromaStore:
     def count(self) -> int:
         return self._col.count()
 
-    def sources(self, page: int = 5000) -> list[str]:
+    def sources(self, page: int = 5000, fresh: bool = False) -> list[str]:
         """
         Distinct source filenames in this corpus (paginated). Cached for
         SOURCES_TTL_S and invalidated by add()/delete_source(), so books a sync
         just indexed appear at once (and, in other processes, within the TTL).
+        `fresh=True` bypasses the cache (used before deleting stale sources).
         """
-        if getattr(self, "_sources_cache", None) is None or \
+        if fresh or getattr(self, "_sources_cache", None) is None or \
                 time.time() - self._sources_at > SOURCES_TTL_S:
             seen, offset = set(), 0
             while True:
@@ -333,13 +334,14 @@ class PgVectorStore:
                         (self.corpus_id,), fetch="one")
         return row[0] if row else 0
 
-    def sources(self) -> list[str]:
+    def sources(self, fresh: bool = False) -> list[str]:
         """
         Distinct source filenames in this corpus. Cached for SOURCES_TTL_S and
         invalidated by add()/delete_source(), so books a sync just indexed appear
         in this worker at once and in the other gunicorn workers within the TTL.
+        `fresh=True` bypasses the cache (used before deleting stale sources).
         """
-        if getattr(self, "_sources_cache", None) is None or \
+        if fresh or getattr(self, "_sources_cache", None) is None or \
                 time.time() - self._sources_at > SOURCES_TTL_S:
             rows = self._run("SELECT DISTINCT source FROM chunks WHERE corpus_id=%s",
                              (self.corpus_id,), fetch="all")
