@@ -39,39 +39,17 @@ except Exception:
     pass
 
 from log_config import setup_logging
-from rag_core import RagEngine, NO_INFO_MESSAGE, build_context_block
+from rag_core import RagEngine, build_context_block, looks_like_no_info
 
 QUESTIONS_FILE = "eval_questions.json"
 
-# Phrases that mean "the answer is not in the documents" (loose match — the model
-# may phrase it slightly differently than the exact NO_INFO_MESSAGE).
-_NO_INFO_HINTS = [
-    NO_INFO_MESSAGE,
-    "אין לי מידע",
-    "אינו מופיע",       # "המידע ... אינו מופיע בקטעי המסמכים"
-    "אינו נמצא",        # "המידע ... אינו נמצא במסמכים שברשותי"
-    "אינם מופיעים",
-    "אינם נמצאים",
-    "לא מופיע",
-    "לא נמצא",
-    "לא מצאתי",
-    "לא ניתן לענות",    # gpt-5: "... ולכן לא ניתן לענות על השאלה"
-    "אין במסמכים",
-    "אין במקטעים",      # gpt-5: "אין במקטעים שסופקו כל מידע"
-    "אין בתמלילים",
-    "אין בקטעים",
-    "אין במקורות",
-    "לא כתוב במסמכים",
-]
+# "Not in the documents" detection lives in rag_core (looks_like_no_info / NO_INFO_HINTS)
+# so the eval, the backend's question log and the source list all agree.
 
 
 # ---------------------------------------------------------------------------
 # Per-check helpers
 # ---------------------------------------------------------------------------
-
-def looks_like_no_info(answer: str) -> bool:
-    """True if the answer is some form of 'this isn't in the documents'."""
-    return any(hint in answer for hint in _NO_INFO_HINTS)
 
 
 def source_was_retrieved(expected: str, sources: list[dict]) -> bool:

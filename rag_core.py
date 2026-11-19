@@ -72,8 +72,12 @@ SYSTEM_PROMPT = (
     "   - explain HOW you reached it — which statements in the text led you to that "
     "conclusion.\n"
     "   Keep explicit facts and your inferences clearly distinguishable.\n"
-    "4. If the question cannot be answered or reasonably inferred from the excerpts, say "
-    "clearly that the information is not in the documents. Do not invent facts.\n"
+    "4. If the question cannot be answered or reasonably inferred from the excerpts, "
+    "reply with EXACTLY this sentence first: 'אין לי מידע על כך במסמכים.' You may add "
+    "at most one short sentence (e.g. which topic the documents do cover). Do NOT quote "
+    "or list unrelated facts from the excerpts, do NOT invent facts, and NEVER offer to "
+    "answer from general knowledge or 'external sources' — you only ever answer from "
+    "the documents, so such an offer must not be made.\n"
     "5. Do NOT mention chunk numbers, page numbers, or source labels inside your answer "
     "text. The sources are shown to the user separately by the app.\n"
     "6. You MAY respond naturally to simple greetings, thanks, or small talk — briefly "
@@ -103,6 +107,40 @@ SYSTEM_PROMPT = (
 
 # A clear message returned when nothing relevant is found in the documents.
 NO_INFO_MESSAGE = "אין לי מידע על כך במסמכים."
+
+# Phrasings the model uses for "the answer is not in the documents". The prompt
+# asks for NO_INFO_MESSAGE verbatim, but models paraphrase; the backend (question
+# log status, source list) and eval.py share this one list so they agree.
+NO_INFO_HINTS = [
+    NO_INFO_MESSAGE,
+    "אין לי מידע",
+    "אינו מופיע",       # "המידע ... אינו מופיע בקטעי המסמכים"
+    "אינו נמצא",        # "המידע ... אינו נמצא במסמכים שברשותי"
+    "אינם מופיעים",
+    "אינם נמצאים",
+    "לא מופיע",
+    "לא נמצא",
+    "לא מצאתי",
+    "לא ניתן לענות",    # gpt-5: "... ולכן לא ניתן לענות על השאלה"
+    "אינני יכול לתאר",  # gpt-5: "אינני יכול לתאר זאת על סמך המקורות האלה"
+    "אינני יכול לענות",
+    "אין במסמכים",
+    "אין במקטעים",      # gpt-5: "אין במקטעים שסופקו כל מידע"
+    "אין בתמלילים",
+    "אין בקטעים",
+    "אין במקורות",
+    "אין הסבר",         # "במסמכים שסיפקת אין הסבר של ..."
+    "לא כתוב במסמכים",
+]
+# Only the START of the answer is examined: a long real answer may legitimately
+# say "X is not mentioned, but Y..." further down.
+NO_INFO_SCAN_CHARS = 200
+
+
+def looks_like_no_info(answer: str) -> bool:
+    """True if the answer opens with some form of 'this isn't in the documents'."""
+    head = (answer or "").lstrip()[:NO_INFO_SCAN_CHARS]
+    return any(hint in head for hint in NO_INFO_HINTS)
 
 # Used to turn a short follow-up ("ומה עם הספר הזה?") into a standalone search
 # query, so retrieval doesn't rely on a context-less fragment. Only invoked when
@@ -751,10 +789,12 @@ class RagEngine:
         if not answer_text.strip():
             answer_text = self.EMPTY_ANSWER_MESSAGE
         # Whole-book mode gathers many chunks from one book — show at most ~10 sources,
-        # and flag it so the UI can note the answer covers the whole book.
+        # and flag it so the UI can note the answer covers the whole book. An answer
+        # that says "not in the documents" used none of them — show no sources, so
+        # the user is not told a non-answer rests on 10 excerpts.
         return {
             "answer": answer_text,
-            "sources": _sample_evenly(prep["chunks"], 10),
+            "sources": [] if looks_like_no_info(answer_text) else _sample_evenly(prep["chunks"], 10),
             "whole_book": prep["whole_book"],
         }
 
@@ -777,15 +817,21 @@ class RagEngine:
             return
 
         produced = False
+        head: list[str] = []  # the opening of the answer, to detect "no info"
+        head_len = 0
         for piece in self.llm.generate_stream(SYSTEM_PROMPT, prep["messages"]):
             if piece:
                 produced = produced or bool(piece.strip())
+                if head_len < NO_INFO_SCAN_CHARS:
+                    head.append(piece)
+                    head_len += len(piece)
                 yield {"type": "delta", "text": piece}
         if not produced:
             yield {"type": "delta", "text": self.EMPTY_ANSWER_MESSAGE}
+        no_info = looks_like_no_info("".join(head))
         yield {
             "type": "done",
-            "sources": _sample_evenly(prep["chunks"], 10),
+            "sources": [] if no_info else _sample_evenly(prep["chunks"], 10),
             "whole_book": prep["whole_book"],
         }
 

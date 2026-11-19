@@ -39,7 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from log_config import setup_logging
-from rag_core import build_registry, NO_INFO_MESSAGE
+from rag_core import build_registry, looks_like_no_info
 from history_store import HistoryStore
 from backend.scheduler import SyncScheduler
 from backend.auth import verify_token, has_corpus_access, DEMO_MODE
@@ -281,7 +281,9 @@ def log_question(user: dict, request: "AskRequest", started: float, *,
     """One row per question for the admin page. Never raises."""
     if error:
         status = "error"
-    elif answer.strip() == NO_INFO_MESSAGE.strip() or sources == 0:
+    elif sources == 0 or looks_like_no_info(answer):
+        # The engine already drops the sources of a "not in the documents" answer;
+        # the phrase check also catches the model's paraphrases of that message.
         status = "no_info"
     else:
         status = "answered"

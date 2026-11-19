@@ -36,8 +36,11 @@ itself — it imports `RagEngine` and exposes it over HTTP.
   PUT on someone else's id is 403. The shape is the UI's own (`id, corpusId, title,
   messages, updatedAt`) so the client needs no translation.
 - **Question log:** every `/ask` and `/ask/stream` call writes one row
-  (`answered | no_info | error`, sources, latency). `no_info` = the "אין לי מידע"
-  message or zero sources. Logging never raises.
+  (`answered | no_info | error`, sources, latency). `no_info` = zero sources or an
+  answer that OPENS with a "not in the documents" phrasing (`rag_core.looks_like_no_info`,
+  shared with eval.py). The engine returns NO sources for such an answer, also in the
+  stream's `done` event, so the UI never shows "10 sources" under a non-answer.
+  Logging never raises.
 - **Admin:** `is_admin(user)` = the `admin` App Role in the token OR the email is in
   the `ADMIN_USERS` env var (comma-separated). DEMO_MODE makes everyone admin.
   `GET /admin/overview` (per-corpus docs/chunks/last sync + usage totals),
